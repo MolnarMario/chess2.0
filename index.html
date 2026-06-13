@@ -32,21 +32,23 @@
   h1 { font-size: 1.3em; margin-bottom: 4px; letter-spacing: 1px; }
   .subtitle { color: #aab; font-size: 0.85em; margin-bottom: 12px; }
 
-  #boardWrap { display: flex; flex-direction: column; align-items: center; }
+  #boardWrap { display: flex; flex-direction: column; align-items: center; max-width: 100%; }
   #board {
     display: grid;
-    grid-template-columns: repeat(8, 72px);
-    grid-template-rows: repeat(8, 72px);
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    width: min(92vw, 576px);
+    aspect-ratio: 1 / 1;
     border: 6px solid #1d1d24;
     border-radius: 6px;
     box-shadow: 0 8px 30px rgba(0,0,0,0.5);
     user-select: none;
+    container-type: inline-size;
   }
   .sq {
     position: relative;
-    width: 72px; height: 72px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 46px;
+    font-size: min(46px, 9cqw);
     cursor: pointer;
     line-height: 1;
   }
@@ -127,9 +129,34 @@
     background: var(--panel);
     border-radius: 10px;
     padding: 18px 20px;
-    width: 300px;
+    width: min(320px, 92vw);
     box-shadow: 0 8px 30px rgba(0,0,0,0.4);
   }
+
+  /* Scoreboard */
+  #scoreboard {
+    background: #2d2d38;
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-bottom: 14px;
+    font-size: 0.85em;
+  }
+  .scoreRow {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 3px 0;
+  }
+  .scoreRow.lead {
+    border-top: 1px solid #4a4a57;
+    margin-top: 4px; padding-top: 6px;
+  }
+  .scoreLabel { color: #aab; }
+  .scoreLabel.w { color: #fff; }
+  .scoreLabel.b { color: #c9c9d6; }
+  .scoreVal { color: #bcc; }
+  .scoreVal b { color: #8fd48f; font-family: Consolas, monospace; font-size: 1.05em; }
+  .matval { font-weight: 700; font-family: Consolas, monospace; }
+  .matval.lead-w { color: #8fd48f; }
+  .matval.lead-b { color: #ff9d6e; }
   #status {
     font-size: 1.05em; font-weight: 600;
     padding: 10px 12px;
@@ -174,6 +201,12 @@
   }
   button:hover { background: #5a82bd; }
 
+  .btnRow { display: flex; gap: 8px; margin-top: 14px; }
+  .btnRow button { margin-top: 0; flex: 1; }
+  #undoBtn { background: #6a5a8a; }
+  #undoBtn:hover { background: #7d6ba3; }
+  #undoBtn:disabled { background: #44444f; color: #888; cursor: default; }
+
   .controls { display: flex; gap: 8px; margin-bottom: 14px; }
   .controls label {
     flex: 1;
@@ -210,8 +243,8 @@
   #modal h3 { margin-bottom: 16px; color: #ffd700; }
   #modalChoices { display: flex; gap: 14px; justify-content: center; }
   .choiceBtn {
-    width: 80px; height: 80px;
-    font-size: 52px;
+    width: min(80px, 18vw); height: min(80px, 18vw);
+    font-size: min(52px, 11vw);
     background: #2d2d38;
     border: 2px solid #555;
     border-radius: 10px;
@@ -221,6 +254,43 @@
     margin: 0; padding: 0;
   }
   .choiceBtn:hover { border-color: #ffd700; background: #3d3d4d; }
+
+  /* Gamble choice buttons */
+  .gambleBtn {
+    width: min(150px, 40vw);
+    padding: 14px 10px;
+    margin: 0;
+    border-radius: 10px;
+    border: 2px solid #555;
+    background: #2d2d38;
+    color: #fff;
+    cursor: pointer;
+    font-size: 1.5em;
+    line-height: 1.15;
+  }
+  .gambleBtn span { display: block; font-size: 0.5em; font-weight: 600; color: #bcc; margin-top: 6px; }
+  .gambleBtn.risk:hover { border-color: #ffd700; background: #4a3d1d; }
+  .gambleBtn.risk:hover span { color: #ffe07a; }
+  .gambleBtn.safe:hover { border-color: #8fd48f; background: #1d3a25; }
+  .gambleBtn.safe:hover span { color: #aef0ae; }
+
+  /* Dice-roll result */
+  .rollResult {
+    font-size: 2em; font-weight: 800;
+    padding: 18px 28px;
+    animation: rollPop 0.35s ease;
+  }
+  .rollResult.win  { color: #8fd48f; text-shadow: 0 0 16px #4caf50; }
+  .rollResult.lose { color: #ff7a7a; text-shadow: 0 0 16px #c62828; }
+  @keyframes rollPop {
+    0% { transform: scale(0.4); opacity: 0; }
+    60% { transform: scale(1.18); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  @media (max-width: 700px) {
+    body { padding: 12px; gap: 14px; }
+  }
 </style>
 </head>
 <body>
@@ -252,8 +322,29 @@
         <option value="b">Black</option>
       </select>
     </label>
+    <label>Gamble
+      <select id="gamble">
+        <option value="on" selected>On</option>
+        <option value="off">Off</option>
+      </select>
+    </label>
   </div>
   <div id="status">White to move</div>
+
+  <div id="scoreboard">
+    <div class="scoreRow">
+      <span class="scoreLabel w">♔ White</span>
+      <span class="scoreVal">captured <b id="capW">0</b> pts</span>
+    </div>
+    <div class="scoreRow">
+      <span class="scoreLabel b">♚ Black</span>
+      <span class="scoreVal">captured <b id="capB">0</b> pts</span>
+    </div>
+    <div class="scoreRow lead">
+      <span class="scoreLabel">Material lead</span>
+      <span class="matval" id="matLead">Even</span>
+    </div>
+  </div>
 
   <div class="rules">
     <h2>Capture Values</h2>
@@ -269,10 +360,20 @@
       <li><span class="glyph">♔</span>King — never evolves</li>
       <li style="color:#889; padding-top:6px;">Leftover points carry over after evolving. The counter on each piece shows progress.</li>
     </ul>
+    <h2>🎲 Gambling</h2>
+    <ul>
+      <li>Set <b>Gamble</b> before the match starts (locked after your first move).</li>
+      <li>When on, any capture lets you <b>gamble</b>: a 50/50 roll.</li>
+      <li>Win → <b>double</b> the points. Lose → your capturing piece is <b style="color:#ff7a7a">destroyed</b> for nothing.</li>
+      <li style="color:#889; padding-top:4px;">Kings never gamble, and you can't risk a piece that's shielding your own King.</li>
+    </ul>
   </div>
 
   <div id="log"><div style="color:#667">— move log —</div></div>
-  <button id="newGameBtn">⟳ New Game</button>
+  <div class="btnRow">
+    <button id="undoBtn" disabled>↶ Undo</button>
+    <button id="newGameBtn">⟳ New Game</button>
+  </div>
 </div>
 
 <div id="modalOverlay">
@@ -297,12 +398,18 @@ const FILES = 'abcdefgh';
 
 // ---------- State ----------
 let board, turn, ep, selected, legalCache, lastMove, gameOver, moveNum, inputLocked;
+let history, captured, halfmoveClock, positionKeys;
+let gambleEnabled;             // locked in at the start of each match
+let gameId = 0; // bumped each New Game; stale async callbacks bail when it changes
+
+const GAMBLE_WIN = 0.5; // probability a gamble pays off
 
 function newPiece(t, c) {
   return { t, c, pts: 0, moved: false, amazon: false };
 }
 
 function initGame() {
+  gameId++;
   board = Array.from({ length: 8 }, () => Array(8).fill(null));
   const back = ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R'];
   for (let col = 0; col < 8; col++) {
@@ -319,7 +426,13 @@ function initGame() {
   gameOver = false;
   inputLocked = false;
   moveNum = 1;
+  history = [];
+  captured = { w: 0, b: 0 };
+  halfmoveClock = 0;
+  positionKeys = [];
+  gambleEnabled = document.getElementById('gamble').value === 'on'; // locked for this match
   document.getElementById('log').innerHTML = '<div style="color:#667">— move log —</div>';
+  pushPositionKey();
   render();
   setStatus('White to move');
   setTimeout(maybeAIMove, 100);
@@ -513,6 +626,7 @@ function allLegalMoves(b, color, epSq) {
 // ---------- Modal (promotion / evolution choice) ----------
 function askChoice(title, options, color, cb) {
   const overlay = document.getElementById('modalOverlay');
+  const gen = gameId;
   document.getElementById('modalTitle').textContent = title;
   const box = document.getElementById('modalChoices');
   box.innerHTML = '';
@@ -521,10 +635,43 @@ function askChoice(title, options, color, cb) {
     btn.className = 'choiceBtn';
     btn.textContent = GLYPHS[color][t];
     btn.title = NAMES[t];
-    btn.onclick = () => { overlay.classList.remove('open'); cb(t); };
+    btn.onclick = () => { overlay.classList.remove('open'); if (gen === gameId) cb(t); };
     box.appendChild(btn);
   }
   overlay.classList.add('open');
+}
+
+function askGamble(p, capturedPiece, base, onGamble, onTake) {
+  const overlay = document.getElementById('modalOverlay');
+  const gen = gameId;
+  document.getElementById('modalTitle').textContent = `Captured ${NAMES[capturedPiece.t]}!  (+${base} pts)`;
+  const box = document.getElementById('modalChoices');
+  box.innerHTML = '';
+
+  const gamble = document.createElement('button');
+  gamble.className = 'gambleBtn risk';
+  gamble.innerHTML = `🎲<span>Gamble (50%)<br>+${base * 2} or lose your ${NAMES[p.t]}</span>`;
+  gamble.onclick = () => { overlay.classList.remove('open'); if (gen === gameId) onGamble(); };
+
+  const take = document.createElement('button');
+  take.className = 'gambleBtn safe';
+  take.innerHTML = `✔<span>Take points<br>+${base} pts, keep ${NAMES[p.t]}</span>`;
+  take.onclick = () => { overlay.classList.remove('open'); if (gen === gameId) onTake(); };
+
+  box.appendChild(gamble);
+  box.appendChild(take);
+  overlay.classList.add('open');
+}
+
+// auto-dismissing dice-roll result splash
+function flashResult(win, text, cb) {
+  const overlay = document.getElementById('modalOverlay');
+  const gen = gameId;
+  document.getElementById('modalTitle').textContent = win ? 'Lucky roll!' : 'Snake eyes…';
+  document.getElementById('modalChoices').innerHTML =
+    `<div class="rollResult ${win ? 'win' : 'lose'}">${text}</div>`;
+  overlay.classList.add('open');
+  setTimeout(() => { overlay.classList.remove('open'); if (gen === gameId) cb(); }, 1200);
 }
 
 // ---------- Evolution ----------
@@ -557,18 +704,22 @@ function evolveChain(r, c, done) {
 
 function flashEvolve(r, c, then) {
   render();
+  const gen = gameId;
   const sq = document.querySelector(`.sq[data-r="${r}"][data-c="${c}"] .piece`);
   if (sq) {
     sq.classList.add('evolving');
-    setTimeout(then, 800);
+    setTimeout(() => { if (gen === gameId) then(); }, 800);
   } else then();
 }
 
 // ---------- Game flow ----------
 function playMove(m) {
+  pushHistory();              // snapshot full state for Undo (before any mutation)
   inputLocked = true;
   const p = board[m.from.r][m.from.c];
+  const moverColor = p.c;
   const capturedPiece = m.ep ? board[m.from.r][m.to.c] : board[m.to.r][m.to.c];
+  const wasPawnMove = p.t === 'P';
   const moveText = `${moveNum}. ${turn === 'w' ? '' : '… '}${NAMES[p.t]} ${sqName(m.from.r, m.from.c)}${capturedPiece ? '×' : '–'}${sqName(m.to.r, m.to.c)}`;
 
   applyMoveToBoard(board, m);
@@ -576,15 +727,15 @@ function playMove(m) {
 
   // en-passant availability for next move
   ep = m.double ? { r: (m.from.r + m.to.r) / 2, c: m.from.c } : null;
-
-  // capture points
-  if (capturedPiece) {
-    p.pts += VALUES[capturedPiece.t];
-    logMove(`${moveText} (+${VALUES[capturedPiece.t]} pts, captured ${NAMES[capturedPiece.t]})`);
-  } else {
-    logMove(moveText);
-  }
+  // fifty-move clock: reset on pawn move or capture, else increment
+  halfmoveClock = (wasPawnMove || capturedPiece) ? 0 : halfmoveClock + 1;
   if (turn === 'b') moveNum++;
+
+  // show the move immediately (so captures are visible behind any modal)
+  selected = null;
+  legalCache = [];
+  lastMove = m;
+  render();
 
   const finish = () => {
     selected = null;
@@ -593,29 +744,88 @@ function playMove(m) {
     turn = enemy(turn);
     inputLocked = false;
     render();
+    pushPositionKey();
     checkGameEnd();
     maybeAIMove();
   };
 
-  // standard promotion on last rank
-  const lastRank = p.c === 'w' ? 0 : 7;
-  if (p.t === 'P' && m.to.r === lastRank) {
-    const applyPromo = choice => {
-      p.t = choice;
-      logEvo(`${sqName(m.to.r, m.to.c)}: Pawn promoted to ${NAMES[choice]}.`);
-      evolveChain(m.to.r, m.to.c, finish);
-    };
-    if (p.c === getAIColor()) applyPromo('Q');
-    else askChoice(`${p.c === 'w' ? 'White' : 'Black'} Pawn promotes! Choose:`, ['Q', 'R', 'B', 'N'], p.c, applyPromo);
-    return;
+  // promotion + evolution; skipped automatically if the piece got busted away
+  const proceed = () => {
+    if (board[m.to.r][m.to.c] !== p) return finish(); // capturing piece was destroyed by a lost gamble
+    const lastRank = moverColor === 'w' ? 0 : 7;
+    if (p.t === 'P' && m.to.r === lastRank) {
+      const applyPromo = choice => {
+        p.t = choice;
+        logEvo(`${sqName(m.to.r, m.to.c)}: Pawn promoted to ${NAMES[choice]}.`);
+        evolveChain(m.to.r, m.to.c, finish);
+      };
+      if (moverColor === getAIColor()) applyPromo('Q');
+      else askChoice(`${moverColor === 'w' ? 'White' : 'Black'} Pawn promotes! Choose:`, ['Q', 'R', 'B', 'N'], moverColor, applyPromo);
+      return;
+    }
+    evolveChain(m.to.r, m.to.c, finish);
+  };
+
+  if (capturedPiece) resolveCapture(p, m, capturedPiece, moveText, moverColor, proceed);
+  else { logMove(moveText); proceed(); }
+}
+
+// ---------- Capture & Gambling ----------
+function resolveCapture(p, m, capturedPiece, moveText, moverColor, proceed) {
+  const base = VALUES[capturedPiece.t];
+
+  const bank = pts => {
+    p.pts += pts;
+    captured[moverColor] += pts;
+    logMove(`${moveText} (+${pts} pts, captured ${NAMES[capturedPiece.t]})`);
+    proceed();
+  };
+  const bust = () => {
+    board[m.to.r][m.to.c] = null; // capturing piece is lost
+    logMove(moveText);
+    logEvo(`${sqName(m.to.r, m.to.c)}: 💀 Gamble BUST! ${NAMES[p.t]} lost — captured ${NAMES[capturedPiece.t]} for 0 pts.`);
+    proceed();
+  };
+  const doGamble = () => {
+    const win = Math.random() < GAMBLE_WIN;
+    flashResult(win, win ? `🎲 WIN!  +${base * 2}` : '💀 BUST!', () => {
+      if (win) { logEvo(`${sqName(m.to.r, m.to.c)}: 🎲 Gamble WON — double loot!`); bank(base * 2); }
+      else bust();
+    });
+  };
+
+  // gambling unavailable for the King, a maxed Amazon (points are useless), or
+  // a piece that's currently shielding its own King (losing it would expose check)
+  const maxed = p.t === 'Q' && p.amazon;
+  const canGamble = getGambleOn() && p.t !== 'K' && !maxed && !gambleExposesKing(p, m, moverColor);
+  if (!canGamble) return bank(base);
+
+  if (moverColor === getAIColor()) {
+    if (aiShouldGamble(p, capturedPiece)) doGamble();
+    else bank(base);
+  } else {
+    askGamble(p, capturedPiece, base, doGamble, () => bank(base));
   }
-  evolveChain(m.to.r, m.to.c, finish);
+}
+
+// would removing the capturing piece (a bust) leave the mover's own King in check?
+function gambleExposesKing(p, m, moverColor) {
+  const sim = cloneBoard(board);
+  sim[m.to.r][m.to.c] = null;
+  return inCheck(sim, moverColor);
+}
+
+// AI gambles only when doubling would complete an evolution that single points won't
+function aiShouldGamble(p, capturedPiece) {
+  if (p.t === 'K' || (p.t === 'Q' && p.amazon)) return false;
+  const need = THRESH[p.t];
+  const base = VALUES[capturedPiece.t];
+  return (p.pts + base) < need && (p.pts + base * 2) >= need;
 }
 
 function checkGameEnd() {
   const moves = allLegalMoves(board, turn, ep);
   const checked = inCheck(board, turn);
-  const who = turn === 'w' ? 'White' : 'Black';
   if (moves.length === 0) {
     gameOver = true;
     if (checked) {
@@ -628,8 +838,64 @@ function checkGameEnd() {
     render();
     return;
   }
-  if (checked) setStatus(`${who} to move — CHECK!`, 'check-warn');
-  else setStatus(`${who} to move`);
+  // draws
+  let draw = null;
+  if (insufficientMaterial()) draw = 'insufficient material';
+  else if (halfmoveClock >= 100) draw = 'fifty-move rule';
+  else if (isThreefoldRepetition()) draw = 'threefold repetition';
+  if (draw) {
+    gameOver = true;
+    setStatus(`½ DRAW — ${draw}`, 'gameover');
+    logEvo(`Draw — ${draw}.`);
+    render();
+    return;
+  }
+  setTurnStatus();
+}
+
+function setTurnStatus() {
+  if (gameOver) return;
+  const who = turn === 'w' ? 'White' : 'Black';
+  const ai = turn === getAIColor() ? ' (AI)' : '';
+  if (inCheck(board, turn)) setStatus(`${who} to move — CHECK!`, 'check-warn');
+  else setStatus(`${who} to move${ai}`);
+}
+
+// ---------- Draw detection ----------
+function positionKey() {
+  let s = turn + '|';
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++) {
+      const p = board[r][c];
+      s += p ? p.c + p.t + (p.amazon ? 'a' : '') + (p.moved ? 'm' : '') + p.pts + ',' : '.';
+    }
+  s += '|' + (ep ? ep.r + '' + ep.c : '-');
+  return s;
+}
+
+function pushPositionKey() { positionKeys.push(positionKey()); }
+
+function isThreefoldRepetition() {
+  const key = positionKeys[positionKeys.length - 1];
+  if (!key) return false;
+  let n = 0;
+  for (const k of positionKeys) if (k === key) n++;
+  return n >= 3;
+}
+
+function insufficientMaterial() {
+  const men = { w: [], b: [] };
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++) {
+      const p = board[r][c];
+      if (p && p.t !== 'K') men[p.c].push(p.amazon ? 'A' : p.t);
+    }
+  const lone = a => a.length === 0;
+  const oneMinor = a => a.length === 1 && (a[0] === 'N' || a[0] === 'B');
+  if (lone(men.w) && lone(men.b)) return true;                // K vs K
+  if (oneMinor(men.w) && lone(men.b)) return true;            // K + minor vs K
+  if (lone(men.w) && oneMinor(men.b)) return true;
+  return false;
 }
 
 // ---------- UI ----------
@@ -724,6 +990,29 @@ function render() {
       boardEl.appendChild(sq);
     }
   }
+  updateScoreboard();
+  refreshUndoBtn();
+}
+
+// ---------- Scoreboard ----------
+function materialOf(color) {
+  let s = 0;
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++) {
+      const p = board[r][c];
+      if (p && p.c === color && p.t !== 'K') s += (p.t === 'Q' && p.amazon) ? 13 : VALUES[p.t];
+    }
+  return s;
+}
+
+function updateScoreboard() {
+  document.getElementById('capW').textContent = captured.w;
+  document.getElementById('capB').textContent = captured.b;
+  const diff = materialOf('w') - materialOf('b');
+  const el = document.getElementById('matLead');
+  if (diff > 0) { el.textContent = `White +${diff}`; el.className = 'matval lead-w'; }
+  else if (diff < 0) { el.textContent = `Black +${-diff}`; el.className = 'matval lead-b'; }
+  else { el.textContent = 'Even'; el.className = 'matval'; }
 }
 
 function onSquareClick(r, c) {
@@ -765,6 +1054,70 @@ const EVO_GAIN = { P: 2, N: 2, B: 2, R: 5, Q: 3 }; // value jump the next evolut
 function getAIColor() {
   if (document.getElementById('mode').value !== 'ai') return null;
   return document.getElementById('playAs').value === 'w' ? 'b' : 'w';
+}
+
+function getHumanColor() {
+  // null in 2-player mode (both sides are human)
+  return document.getElementById('mode').value !== 'ai' ? null : document.getElementById('playAs').value;
+}
+
+function getGambleOn() {
+  return gambleEnabled; // fixed at match start, not changeable mid-game
+}
+
+// ---------- Undo ----------
+function pushHistory() {
+  history.push({
+    board: cloneBoard(board),
+    turn,
+    ep: ep ? { r: ep.r, c: ep.c } : null,
+    lastMove: lastMove ? JSON.parse(JSON.stringify(lastMove)) : null,
+    moveNum, gameOver, halfmoveClock,
+    captured: { w: captured.w, b: captured.b },
+    positionKeys: positionKeys.slice(),
+    logHTML: document.getElementById('log').innerHTML
+  });
+}
+
+function restoreSnapshot(s) {
+  board = cloneBoard(s.board);
+  turn = s.turn;
+  ep = s.ep ? { r: s.ep.r, c: s.ep.c } : null;
+  lastMove = s.lastMove ? JSON.parse(JSON.stringify(s.lastMove)) : null;
+  moveNum = s.moveNum;
+  gameOver = s.gameOver;
+  halfmoveClock = s.halfmoveClock;
+  captured = { w: s.captured.w, b: s.captured.b };
+  positionKeys = s.positionKeys.slice();
+  document.getElementById('log').innerHTML = s.logHTML;
+  selected = null;
+  legalCache = [];
+  inputLocked = false;
+  document.getElementById('modalOverlay').classList.remove('open');
+}
+
+function undo() {
+  if (inputLocked || !history.length) return;
+  if (document.getElementById('modalOverlay').classList.contains('open')) return;
+
+  const human = getHumanColor();
+  let snap;
+  if (human === null) {
+    snap = history.pop();                 // 2-player: rewind one ply
+  } else {
+    do { snap = history.pop(); }          // vs AI: rewind to the player's last turn
+    while (history.length && snap.turn !== human);
+  }
+  restoreSnapshot(snap);
+  render();
+  setTurnStatus();
+  if (turn === getAIColor() && !gameOver) maybeAIMove(); // landed on AI's turn (only at game start)
+}
+
+function refreshUndoBtn() {
+  const btn = document.getElementById('undoBtn');
+  if (btn) btn.disabled = inputLocked || history.length === 0 ||
+    document.getElementById('modalOverlay').classList.contains('open');
 }
 
 function genAllPseudo(b, color, epSq) {
@@ -898,8 +1251,11 @@ function maybeAIMove() {
   const ai = getAIColor();
   if (!ai || gameOver || turn !== ai) return;
   inputLocked = true;
+  refreshUndoBtn();
+  const gen = gameId;
   setStatus(`${turn === 'w' ? 'White' : 'Black'} (AI) is thinking…`);
   setTimeout(() => {
+    if (gen !== gameId) return;
     const m = chooseAIMove();
     inputLocked = false;
     if (m) playMove(m);
@@ -909,7 +1265,15 @@ function maybeAIMove() {
 for (const id of ['mode', 'playAs', 'difficulty'])
   document.getElementById(id).addEventListener('change', maybeAIMove);
 
+// Gambling is a per-match setting: editable until the first move, then locked.
+document.getElementById('gamble').addEventListener('change', () => {
+  const on = document.getElementById('gamble').value === 'on';
+  if (history.length === 0) gambleEnabled = on;            // match not started yet — apply now
+  else logEvo(`Gambling ${on ? 'ON' : 'OFF'} — takes effect on the next New Game.`);
+});
+
 document.getElementById('newGameBtn').addEventListener('click', initGame);
+document.getElementById('undoBtn').addEventListener('click', undo);
 initGame();
 </script>
 </body>
