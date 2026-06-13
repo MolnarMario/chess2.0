@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chess 2.0 — RPG Evolution Chess</title>
+<style>
+  :root {
+    --light: #f0d9b5;
+    --dark: #b58863;
+    --select: rgba(70, 130, 220, 0.55);
+    --move-dot: rgba(30, 90, 30, 0.45);
+    --capture-ring: rgba(200, 40, 40, 0.65);
+    --last-move: rgba(255, 215, 0, 0.35);
+    --check: rgba(255, 40, 40, 0.55);
+    --bg: #2b2b35;
+    --panel: #3a3a47;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: #eee;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 24px;
+    padding: 24px;
+    min-height: 100vh;
+    flex-wrap: wrap;
+  }
+  h1 { font-size: 1.3em; margin-bottom: 4px; letter-spacing: 1px; }
+  .subtitle { color: #aab; font-size: 0.85em; margin-bottom: 12px; }
+
+  #boardWrap { display: flex; flex-direction: column; align-items: center; }
+  #board {
+    display: grid;
+    grid-template-columns: repeat(8, 72px);
+    grid-template-rows: repeat(8, 72px);
+    border: 6px solid #1d1d24;
+    border-radius: 6px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+    user-select: none;
+  }
+  .sq {
+    position: relative;
+    width: 72px; height: 72px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 46px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .sq.light { background: var(--light); }
+  .sq.dark  { background: var(--dark); }
+  .sq.lastmove::before {
+    content: ''; position: absolute; inset: 0; background: var(--last-move);
+  }
+  .sq.selected::before {
+    content: ''; position: absolute; inset: 0; background: var(--select);
+  }
+  .sq.check::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(circle, var(--check) 30%, transparent 75%);
+  }
+  .sq.movetarget::after {
+    content: ''; position: absolute;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--move-dot);
+    pointer-events: none;
+  }
+  .sq.capturetarget::after {
+    content: ''; position: absolute; inset: 4px;
+    border: 4px solid var(--capture-ring); border-radius: 50%;
+    background: none;
+    width: auto; height: auto;
+    pointer-events: none;
+  }
+  .piece { position: relative; z-index: 2; pointer-events: none; }
+  .piece.white { color: #fff; text-shadow: 0 0 3px #000, 0 2px 3px rgba(0,0,0,0.6); }
+  .piece.black { color: #1a1a1a; text-shadow: 0 0 3px rgba(255,255,255,0.35), 0 2px 3px rgba(0,0,0,0.4); }
+  .piece.amazon { text-shadow: 0 0 10px #ffd700, 0 0 18px #ff9d00, 0 2px 3px rgba(0,0,0,0.6); }
+
+  .counter {
+    position: absolute;
+    top: 2px; right: 2px;
+    z-index: 3;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: Consolas, monospace;
+    background: rgba(20, 20, 30, 0.85);
+    color: #8fd48f;
+    padding: 1px 4px;
+    border-radius: 6px;
+    pointer-events: none;
+    border: 1px solid rgba(255,255,255,0.15);
+  }
+  .counter.close { color: #ffd24a; }
+  .counter.max { color: #ffd700; background: rgba(80, 50, 0, 0.9); }
+
+  .amazon-badge {
+    position: absolute;
+    bottom: 2px; left: 3px;
+    z-index: 3;
+    font-size: 13px;
+    pointer-events: none;
+    filter: drop-shadow(0 0 3px #ffd700);
+  }
+
+  .coord {
+    position: absolute;
+    font-size: 10px; font-weight: 700;
+    color: rgba(0,0,0,0.45);
+    pointer-events: none;
+    z-index: 1;
+  }
+  .coord.file { bottom: 2px; right: 3px; }
+  .coord.rank { top: 2px; left: 3px; }
+
+  @keyframes evolveFlash {
+    0%   { filter: brightness(1)   drop-shadow(0 0 0px  #ffd700); transform: scale(1); }
+    40%  { filter: brightness(2.2) drop-shadow(0 0 18px #ffd700); transform: scale(1.35); }
+    100% { filter: brightness(1)   drop-shadow(0 0 0px  #ffd700); transform: scale(1); }
+  }
+  .piece.evolving { animation: evolveFlash 0.8s ease; }
+
+  #sidePanel {
+    background: var(--panel);
+    border-radius: 10px;
+    padding: 18px 20px;
+    width: 300px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  }
+  #status {
+    font-size: 1.05em; font-weight: 600;
+    padding: 10px 12px;
+    background: #2d2d38;
+    border-radius: 8px;
+    margin-bottom: 14px;
+    text-align: center;
+    min-height: 42px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #status.check-warn { color: #ff8a8a; }
+  #status.gameover { color: #ffd700; }
+
+  .rules h2 { font-size: 0.95em; margin: 12px 0 6px; color: #cdd; border-bottom: 1px solid #555; padding-bottom: 4px; }
+  .rules ul { list-style: none; font-size: 0.83em; color: #bcc; }
+  .rules li { padding: 3px 0; }
+  .rules .glyph { font-size: 1.2em; margin-right: 4px; }
+  .rules b { color: #8fd48f; }
+
+  #log {
+    margin-top: 14px;
+    max-height: 180px;
+    overflow-y: auto;
+    font-size: 0.8em;
+    font-family: Consolas, monospace;
+    background: #2d2d38;
+    border-radius: 8px;
+    padding: 8px 10px;
+    color: #aab;
+  }
+  #log .evo { color: #ffd24a; }
+  #log div { padding: 1px 0; }
+
+  button {
+    width: 100%;
+    margin-top: 14px;
+    padding: 10px;
+    font-size: 1em; font-weight: 600;
+    background: #4a6fa5; color: #fff;
+    border: none; border-radius: 8px;
+    cursor: pointer;
+  }
+  button:hover { background: #5a82bd; }
+
+  .controls { display: flex; gap: 8px; margin-bottom: 14px; }
+  .controls label {
+    flex: 1;
+    font-size: 0.72em; color: #aab;
+    display: flex; flex-direction: column; gap: 3px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .controls select {
+    background: #2d2d38; color: #eee;
+    border: 1px solid #555; border-radius: 6px;
+    padding: 6px 4px;
+    font-size: 1.1em;
+    cursor: pointer;
+  }
+  .controls select:hover { border-color: #888; }
+
+  /* Modal for evolution / promotion choices */
+  #modalOverlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  #modalOverlay.open { display: flex; }
+  #modal {
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 24px 30px;
+    text-align: center;
+    box-shadow: 0 10px 50px rgba(0,0,0,0.7);
+    border: 2px solid #ffd700;
+  }
+  #modal h3 { margin-bottom: 16px; color: #ffd700; }
+  #modalChoices { display: flex; gap: 14px; justify-content: center; }
+  .choiceBtn {
+    width: 80px; height: 80px;
+    font-size: 52px;
+    background: #2d2d38;
+    border: 2px solid #555;
+    border-radius: 10px;
+    cursor: pointer;
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0; padding: 0;
+  }
+  .choiceBtn:hover { border-color: #ffd700; background: #3d3d4d; }
+</style>
+</head>
+<body>
+
+<div id="boardWrap">
+  <h1>♟ CHESS 2.0 <span style="color:#ffd700">RPG</span></h1>
+  <div class="subtitle">Capture to evolve. The King watches, unchanged.</div>
+  <div id="board"></div>
+</div>
+
+<div id="sidePanel">
+  <div class="controls">
+    <label>Mode
+      <select id="mode">
+        <option value="ai" selected>vs AI</option>
+        <option value="2p">2 Players</option>
+      </select>
+    </label>
+    <label>Difficulty
+      <select id="difficulty">
+        <option value="easy">Easy</option>
+        <option value="medium" selected>Medium</option>
+        <option value="hard">Hard</option>
+      </select>
+    </label>
+    <label>Play as
+      <select id="playAs">
+        <option value="w" selected>White</option>
+        <option value="b">Black</option>
+      </select>
+    </label>
+  </div>
+  <div id="status">White to move</div>
+
+  <div class="rules">
+    <h2>Capture Values</h2>
+    <ul>
+      <li><span class="glyph">♙</span>Pawn = <b>1</b> &nbsp;&nbsp; <span class="glyph">♘</span>♗ = <b>3</b> &nbsp;&nbsp; <span class="glyph">♖</span>= <b>5</b> &nbsp;&nbsp; <span class="glyph">♕</span>= <b>10</b></li>
+    </ul>
+    <h2>Evolution Paths</h2>
+    <ul>
+      <li><span class="glyph">♙</span>Pawn <b>2 pts</b> → Knight or Bishop (your choice)</li>
+      <li><span class="glyph">♘</span>Knight / ♗ Bishop <b>6 pts</b> → Rook</li>
+      <li><span class="glyph">♖</span>Rook <b>10 pts</b> → Queen</li>
+      <li><span class="glyph">♕</span>Queen <b>20 pts</b> → ⭐ Amazon (Queen + Knight moves)</li>
+      <li><span class="glyph">♔</span>King — never evolves</li>
+      <li style="color:#889; padding-top:6px;">Leftover points carry over after evolving. The counter on each piece shows progress.</li>
+    </ul>
+  </div>
+
+  <div id="log"><div style="color:#667">— move log —</div></div>
+  <button id="newGameBtn">⟳ New Game</button>
+</div>
+
+<div id="modalOverlay">
+  <div id="modal">
+    <h3 id="modalTitle">Evolve!</h3>
+    <div id="modalChoices"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ---------- Constants ----------
+const VALUES = { P: 1, N: 3, B: 3, R: 5, Q: 10, K: 0 };
+const THRESH = { P: 2, N: 6, B: 6, R: 10, Q: 20 };
+const GLYPHS = {
+  w: { K: '♔', Q: '♕', R: '♖', B: '♗', N: '♘', P: '♙' },
+  b: { K: '♚', Q: '♛', R: '♜', B: '♝', N: '♞', P: '♟' }
+};
+const NAMES = { P: 'Pawn', N: 'Knight', B: 'Bishop', R: 'Rook', Q: 'Queen', K: 'King' };
+const FILES = 'abcdefgh';
+
+// ---------- State ----------
+let board, turn, ep, selected, legalCache, lastMove, gameOver, moveNum, inputLocked;
+
+function newPiece(t, c) {
+  return { t, c, pts: 0, moved: false, amazon: false };
+}
+
+function initGame() {
+  board = Array.from({ length: 8 }, () => Array(8).fill(null));
+  const back = ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R'];
+  for (let col = 0; col < 8; col++) {
+    board[0][col] = newPiece(back[col], 'b');
+    board[1][col] = newPiece('P', 'b');
+    board[6][col] = newPiece('P', 'w');
+    board[7][col] = newPiece(back[col], 'w');
+  }
+  turn = 'w';
+  ep = null;            // en-passant target square {r, c}
+  selected = null;
+  legalCache = [];
+  lastMove = null;
+  gameOver = false;
+  inputLocked = false;
+  moveNum = 1;
+  document.getElementById('log').innerHTML = '<div style="color:#667">— move log —</div>';
+  render();
+  setStatus('White to move');
+  setTimeout(maybeAIMove, 100);
+}
+
+// ---------- Helpers ----------
+const inB = (r, c) => r >= 0 && r < 8 && c >= 0 && c < 8;
+const sqName = (r, c) => FILES[c] + (8 - r);
+const enemy = c => (c === 'w' ? 'b' : 'w');
+
+function cloneBoard(b) {
+  return b.map(row => row.map(p => (p ? { ...p } : null)));
+}
+
+function findKing(b, color) {
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++)
+      if (b[r][c] && b[r][c].t === 'K' && b[r][c].c === color) return { r, c };
+  return null;
+}
+
+// ---------- Attack detection ----------
+const KNIGHT_D = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+const ROOK_D   = [[-1,0],[1,0],[0,-1],[0,1]];
+const BISHOP_D = [[-1,-1],[-1,1],[1,-1],[1,1]];
+const KING_D   = ROOK_D.concat(BISHOP_D);
+
+function isAttacked(b, r, c, byColor) {
+  // pawns
+  const dir = byColor === 'w' ? 1 : -1; // attacker sits dir rows "below" target from its own perspective
+  for (const dc of [-1, 1]) {
+    const pr = r + dir, pc = c + dc;
+    if (inB(pr, pc)) {
+      const p = b[pr][pc];
+      if (p && p.c === byColor && p.t === 'P') return true;
+    }
+  }
+  // knights (and amazons)
+  for (const [dr, dc] of KNIGHT_D) {
+    const nr = r + dr, nc = c + dc;
+    if (inB(nr, nc)) {
+      const p = b[nr][nc];
+      if (p && p.c === byColor && (p.t === 'N' || (p.t === 'Q' && p.amazon))) return true;
+    }
+  }
+  // sliding: rook lines
+  for (const [dr, dc] of ROOK_D) {
+    let nr = r + dr, nc = c + dc;
+    while (inB(nr, nc)) {
+      const p = b[nr][nc];
+      if (p) {
+        if (p.c === byColor && (p.t === 'R' || p.t === 'Q')) return true;
+        break;
+      }
+      nr += dr; nc += dc;
+    }
+  }
+  // sliding: bishop lines
+  for (const [dr, dc] of BISHOP_D) {
+    let nr = r + dr, nc = c + dc;
+    while (inB(nr, nc)) {
+      const p = b[nr][nc];
+      if (p) {
+        if (p.c === byColor && (p.t === 'B' || p.t === 'Q')) return true;
+        break;
+      }
+      nr += dr; nc += dc;
+    }
+  }
+  // king
+  for (const [dr, dc] of KING_D) {
+    const nr = r + dr, nc = c + dc;
+    if (inB(nr, nc)) {
+      const p = b[nr][nc];
+      if (p && p.c === byColor && p.t === 'K') return true;
+    }
+  }
+  return false;
+}
+
+function inCheck(b, color) {
+  const k = findKing(b, color);
+  return k ? isAttacked(b, k.r, k.c, enemy(color)) : false;
+}
+
+// ---------- Move generation ----------
+function pseudoMoves(b, r, c, epSq) {
+  const p = b[r][c];
+  if (!p) return [];
+  const moves = [];
+  const add = (nr, nc, extra) => moves.push(Object.assign({ from: { r, c }, to: { r: nr, c: nc } }, extra || {}));
+
+  const slide = dirs => {
+    for (const [dr, dc] of dirs) {
+      let nr = r + dr, nc = c + dc;
+      while (inB(nr, nc)) {
+        const q = b[nr][nc];
+        if (!q) add(nr, nc);
+        else { if (q.c !== p.c) add(nr, nc); break; }
+        nr += dr; nc += dc;
+      }
+    }
+  };
+  const jump = dirs => {
+    for (const [dr, dc] of dirs) {
+      const nr = r + dr, nc = c + dc;
+      if (inB(nr, nc) && (!b[nr][nc] || b[nr][nc].c !== p.c)) add(nr, nc);
+    }
+  };
+
+  switch (p.t) {
+    case 'P': {
+      const dir = p.c === 'w' ? -1 : 1;
+      const startRow = p.c === 'w' ? 6 : 1;
+      // forward
+      if (inB(r + dir, c) && !b[r + dir][c]) {
+        add(r + dir, c);
+        if (r === startRow && !b[r + 2 * dir][c]) add(r + 2 * dir, c, { double: true });
+      }
+      // captures
+      for (const dc of [-1, 1]) {
+        const nr = r + dir, nc = c + dc;
+        if (!inB(nr, nc)) continue;
+        const q = b[nr][nc];
+        if (q && q.c !== p.c) add(nr, nc);
+        else if (!q && epSq && epSq.r === nr && epSq.c === nc) add(nr, nc, { ep: true });
+      }
+      break;
+    }
+    case 'N': jump(KNIGHT_D); break;
+    case 'B': slide(BISHOP_D); break;
+    case 'R': slide(ROOK_D); break;
+    case 'Q':
+      slide(KING_D);
+      if (p.amazon) jump(KNIGHT_D);
+      break;
+    case 'K': {
+      jump(KING_D);
+      // castling
+      if (!p.moved && !isAttacked(b, r, c, enemy(p.c))) {
+        // kingside
+        const rk = b[r][7];
+        if (rk && rk.t === 'R' && rk.c === p.c && !rk.moved &&
+            !b[r][5] && !b[r][6] &&
+            !isAttacked(b, r, 5, enemy(p.c)) && !isAttacked(b, r, 6, enemy(p.c))) {
+          add(r, 6, { castle: 'k' });
+        }
+        // queenside
+        const rq = b[r][0];
+        if (rq && rq.t === 'R' && rq.c === p.c && !rq.moved &&
+            !b[r][1] && !b[r][2] && !b[r][3] &&
+            !isAttacked(b, r, 3, enemy(p.c)) && !isAttacked(b, r, 2, enemy(p.c))) {
+          add(r, 2, { castle: 'q' });
+        }
+      }
+      break;
+    }
+  }
+  return moves;
+}
+
+function applyMoveToBoard(b, m) {
+  // mutates b; no evolution / promotion choice here (used for legality sim too)
+  const p = b[m.from.r][m.from.c];
+  b[m.to.r][m.to.c] = p;
+  b[m.from.r][m.from.c] = null;
+  if (m.ep) b[m.from.r][m.to.c] = null;
+  if (m.castle === 'k') { b[m.to.r][5] = b[m.to.r][7]; b[m.to.r][7] = null; }
+  if (m.castle === 'q') { b[m.to.r][3] = b[m.to.r][0]; b[m.to.r][0] = null; }
+}
+
+function legalMoves(b, r, c, epSq) {
+  const p = b[r][c];
+  if (!p) return [];
+  return pseudoMoves(b, r, c, epSq).filter(m => {
+    const sim = cloneBoard(b);
+    applyMoveToBoard(sim, m);
+    return !inCheck(sim, p.c);
+  });
+}
+
+function allLegalMoves(b, color, epSq) {
+  const out = [];
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++)
+      if (b[r][c] && b[r][c].c === color)
+        out.push(...legalMoves(b, r, c, epSq));
+  return out;
+}
+
+// ---------- Modal (promotion / evolution choice) ----------
+function askChoice(title, options, color, cb) {
+  const overlay = document.getElementById('modalOverlay');
+  document.getElementById('modalTitle').textContent = title;
+  const box = document.getElementById('modalChoices');
+  box.innerHTML = '';
+  for (const t of options) {
+    const btn = document.createElement('button');
+    btn.className = 'choiceBtn';
+    btn.textContent = GLYPHS[color][t];
+    btn.title = NAMES[t];
+    btn.onclick = () => { overlay.classList.remove('open'); cb(t); };
+    box.appendChild(btn);
+  }
+  overlay.classList.add('open');
+}
+
+// ---------- Evolution ----------
+function evolveChain(r, c, done) {
+  const p = board[r][c];
+  if (!p || p.t === 'K') return done();
+  if (p.t === 'Q' && p.amazon) return done();
+  const need = THRESH[p.t];
+  if (p.pts < need) return done();
+
+  if (p.t === 'P') {
+    const apply = choice => {
+      p.pts -= need;
+      p.t = choice;
+      logEvo(`${sqName(r, c)}: Pawn evolved into ${NAMES[choice]}!`);
+      flashEvolve(r, c, () => evolveChain(r, c, done));
+    };
+    if (p.c === getAIColor()) apply(aiPickEvolution(r, c));
+    else askChoice(`${p.c === 'w' ? 'White' : 'Black'} Pawn evolves! Choose:`, ['N', 'B'], p.c, apply);
+    return;
+  }
+  p.pts -= need;
+  let msg;
+  if (p.t === 'N' || p.t === 'B') { msg = `${NAMES[p.t]} evolved into Rook!`; p.t = 'R'; }
+  else if (p.t === 'R') { msg = 'Rook evolved into Queen!'; p.t = 'Q'; }
+  else if (p.t === 'Q') { msg = 'Queen ascended — AMAZON! (Queen + Knight moves)'; p.amazon = true; }
+  logEvo(`${sqName(r, c)}: ${msg}`);
+  flashEvolve(r, c, () => evolveChain(r, c, done));
+}
+
+function flashEvolve(r, c, then) {
+  render();
+  const sq = document.querySelector(`.sq[data-r="${r}"][data-c="${c}"] .piece`);
+  if (sq) {
+    sq.classList.add('evolving');
+    setTimeout(then, 800);
+  } else then();
+}
+
+// ---------- Game flow ----------
+function playMove(m) {
+  inputLocked = true;
+  const p = board[m.from.r][m.from.c];
+  const capturedPiece = m.ep ? board[m.from.r][m.to.c] : board[m.to.r][m.to.c];
+  const moveText = `${moveNum}. ${turn === 'w' ? '' : '… '}${NAMES[p.t]} ${sqName(m.from.r, m.from.c)}${capturedPiece ? '×' : '–'}${sqName(m.to.r, m.to.c)}`;
+
+  applyMoveToBoard(board, m);
+  p.moved = true;
+
+  // en-passant availability for next move
+  ep = m.double ? { r: (m.from.r + m.to.r) / 2, c: m.from.c } : null;
+
+  // capture points
+  if (capturedPiece) {
+    p.pts += VALUES[capturedPiece.t];
+    logMove(`${moveText} (+${VALUES[capturedPiece.t]} pts, captured ${NAMES[capturedPiece.t]})`);
+  } else {
+    logMove(moveText);
+  }
+  if (turn === 'b') moveNum++;
+
+  const finish = () => {
+    selected = null;
+    legalCache = [];
+    lastMove = m;
+    turn = enemy(turn);
+    inputLocked = false;
+    render();
+    checkGameEnd();
+    maybeAIMove();
+  };
+
+  // standard promotion on last rank
+  const lastRank = p.c === 'w' ? 0 : 7;
+  if (p.t === 'P' && m.to.r === lastRank) {
+    const applyPromo = choice => {
+      p.t = choice;
+      logEvo(`${sqName(m.to.r, m.to.c)}: Pawn promoted to ${NAMES[choice]}.`);
+      evolveChain(m.to.r, m.to.c, finish);
+    };
+    if (p.c === getAIColor()) applyPromo('Q');
+    else askChoice(`${p.c === 'w' ? 'White' : 'Black'} Pawn promotes! Choose:`, ['Q', 'R', 'B', 'N'], p.c, applyPromo);
+    return;
+  }
+  evolveChain(m.to.r, m.to.c, finish);
+}
+
+function checkGameEnd() {
+  const moves = allLegalMoves(board, turn, ep);
+  const checked = inCheck(board, turn);
+  const who = turn === 'w' ? 'White' : 'Black';
+  if (moves.length === 0) {
+    gameOver = true;
+    if (checked) {
+      setStatus(`☠ CHECKMATE — ${turn === 'w' ? 'Black' : 'White'} wins!`, 'gameover');
+      logEvo(`Checkmate. ${turn === 'w' ? 'Black' : 'White'} wins.`);
+    } else {
+      setStatus('½ STALEMATE — draw', 'gameover');
+      logEvo('Stalemate. Draw.');
+    }
+    render();
+    return;
+  }
+  if (checked) setStatus(`${who} to move — CHECK!`, 'check-warn');
+  else setStatus(`${who} to move`);
+}
+
+// ---------- UI ----------
+function setStatus(text, cls) {
+  const el = document.getElementById('status');
+  el.textContent = text;
+  el.className = cls || '';
+}
+
+function logMove(text) {
+  const log = document.getElementById('log');
+  const div = document.createElement('div');
+  div.textContent = text;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+function logEvo(text) {
+  const log = document.getElementById('log');
+  const div = document.createElement('div');
+  div.className = 'evo';
+  div.textContent = '⚡ ' + text;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+function render() {
+  const boardEl = document.getElementById('board');
+  boardEl.innerHTML = '';
+  const checkedKing = inCheck(board, turn) && !gameOver ? findKing(board, turn) : null;
+
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const sq = document.createElement('div');
+      sq.className = `sq ${(r + c) % 2 === 0 ? 'light' : 'dark'}`;
+      sq.dataset.r = r;
+      sq.dataset.c = c;
+
+      // coordinates
+      if (r === 7) {
+        const f = document.createElement('span');
+        f.className = 'coord file';
+        f.textContent = FILES[c];
+        sq.appendChild(f);
+      }
+      if (c === 0) {
+        const rk = document.createElement('span');
+        rk.className = 'coord rank';
+        rk.textContent = 8 - r;
+        sq.appendChild(rk);
+      }
+
+      if (lastMove && ((lastMove.from.r === r && lastMove.from.c === c) || (lastMove.to.r === r && lastMove.to.c === c)))
+        sq.classList.add('lastmove');
+      if (selected && selected.r === r && selected.c === c)
+        sq.classList.add('selected');
+      if (checkedKing && checkedKing.r === r && checkedKing.c === c)
+        sq.classList.add('check');
+
+      const mv = legalCache.find(m => m.to.r === r && m.to.c === c);
+      if (mv) sq.classList.add(board[r][c] || mv.ep ? 'capturetarget' : 'movetarget');
+
+      const p = board[r][c];
+      if (p) {
+        const span = document.createElement('span');
+        span.className = `piece ${p.c === 'w' ? 'white' : 'black'}${p.amazon ? ' amazon' : ''}`;
+        span.textContent = GLYPHS[p.c][p.t];
+        sq.appendChild(span);
+
+        // evolution counter — top right of the square
+        if (p.t !== 'K') {
+          const ctr = document.createElement('span');
+          if (p.t === 'Q' && p.amazon) {
+            ctr.className = 'counter max';
+            ctr.textContent = 'MAX';
+          } else {
+            const need = THRESH[p.t];
+            ctr.className = 'counter' + (p.pts >= need - 1 && p.pts > 0 ? ' close' : '');
+            ctr.textContent = `${p.pts}/${need}`;
+          }
+          sq.appendChild(ctr);
+        }
+        if (p.amazon) {
+          const badge = document.createElement('span');
+          badge.className = 'amazon-badge';
+          badge.textContent = '⭐';
+          sq.appendChild(badge);
+        }
+      }
+
+      sq.addEventListener('click', () => onSquareClick(r, c));
+      boardEl.appendChild(sq);
+    }
+  }
+}
+
+function onSquareClick(r, c) {
+  if (gameOver || inputLocked || turn === getAIColor()) return;
+  const p = board[r][c];
+
+  // clicking a legal destination → move
+  const mv = legalCache.find(m => m.to.r === r && m.to.c === c);
+  if (selected && mv) {
+    playMove(mv);
+    return;
+  }
+  // select own piece
+  if (p && p.c === turn) {
+    if (selected && selected.r === r && selected.c === c) {
+      selected = null;
+      legalCache = [];
+    } else {
+      selected = { r, c };
+      legalCache = legalMoves(board, r, c, ep);
+    }
+    render();
+    return;
+  }
+  // deselect
+  selected = null;
+  legalCache = [];
+  render();
+}
+
+// ---------- AI Engine ----------
+const DIFFICULTY = {
+  easy:   { depth: 1, noise: 1.5, qDepth: 0 },  // shallow + very noisy: blunders happily
+  medium: { depth: 2, noise: 0.2, qDepth: 0 },  // sees recaptures
+  hard:   { depth: 4, noise: 0,   qDepth: 4 }   // deeper + resolves capture chains
+};
+const EVO_GAIN = { P: 2, N: 2, B: 2, R: 5, Q: 3 }; // value jump the next evolution grants
+
+function getAIColor() {
+  if (document.getElementById('mode').value !== 'ai') return null;
+  return document.getElementById('playAs').value === 'w' ? 'b' : 'w';
+}
+
+function genAllPseudo(b, color, epSq) {
+  const out = [];
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++)
+      if (b[r][c] && b[r][c].c === color)
+        out.push(...pseudoMoves(b, r, c, epSq));
+  return out;
+}
+
+// auto-resolve evolution inside the search (pawn defaults to knight)
+function autoEvolve(p) {
+  while (p.t !== 'K' && !(p.t === 'Q' && p.amazon) && p.pts >= THRESH[p.t]) {
+    p.pts -= THRESH[p.t];
+    if (p.t === 'P') p.t = 'N';
+    else if (p.t === 'N' || p.t === 'B') p.t = 'R';
+    else if (p.t === 'R') p.t = 'Q';
+    else if (p.t === 'Q') p.amazon = true;
+  }
+}
+
+// apply a move on a sim board with points + evolution; returns new ep square
+function simApply(b, m) {
+  const p = b[m.from.r][m.from.c];
+  const captured = m.ep ? b[m.from.r][m.to.c] : b[m.to.r][m.to.c];
+  applyMoveToBoard(b, m);
+  p.moved = true;
+  if (captured) p.pts += VALUES[captured.t];
+  if (p.t === 'P' && m.to.r === (p.c === 'w' ? 0 : 7)) p.t = 'Q';
+  autoEvolve(p);
+  return m.double ? { r: (m.from.r + m.to.r) / 2, c: m.from.c } : null;
+}
+
+function evalBoard(b, color) {
+  let score = 0;
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const p = b[r][c];
+      if (!p) continue;
+      let v = (p.t === 'Q' && p.amazon) ? 13 : VALUES[p.t];
+      // banked evolution points are future power
+      if (p.t !== 'K' && !(p.t === 'Q' && p.amazon))
+        v += (p.pts / THRESH[p.t]) * EVO_GAIN[p.t] * 0.6;
+      const centerDist = Math.abs(3.5 - r) + Math.abs(3.5 - c);
+      if (p.t === 'N' || p.t === 'B') v += (6 - centerDist) * 0.03;
+      else if (p.t === 'P') v += (p.c === 'w' ? 6 - r : r - 1) * 0.04;
+      else if (p.t === 'Q' || p.t === 'R') v += (6 - centerDist) * 0.01;
+      score += p.c === 'w' ? v : -v;
+    }
+  }
+  return color === 'w' ? score : -score;
+}
+
+function orderMoves(b, moves) {
+  for (const m of moves) {
+    const cap = m.ep ? b[m.from.r][m.to.c] : b[m.to.r][m.to.c];
+    m.sortKey = cap ? 10 * VALUES[cap.t] - VALUES[b[m.from.r][m.from.c].t] : 0;
+  }
+  moves.sort((a, b2) => b2.sortKey - a.sortKey);
+}
+
+// captures-only search so depth-limited eval doesn't stop mid-exchange
+function quiesce(b, alpha, beta, color, epSq, qd) {
+  const stand = evalBoard(b, color);
+  if (qd <= 0 || stand >= beta) return stand;
+  if (stand > alpha) alpha = stand;
+  const moves = genAllPseudo(b, color, epSq).filter(m => m.ep || b[m.to.r][m.to.c]);
+  orderMoves(b, moves);
+  let best = stand;
+  for (const m of moves) {
+    const captured = m.ep ? b[m.from.r][m.to.c] : b[m.to.r][m.to.c];
+    if (captured.t === 'K') return 10000;
+    const sim = cloneBoard(b);
+    const newEp = simApply(sim, m);
+    const score = -quiesce(sim, -beta, -alpha, enemy(color), newEp, qd - 1);
+    if (score > best) best = score;
+    if (best > alpha) alpha = best;
+    if (alpha >= beta) break;
+  }
+  return best;
+}
+
+function negamax(b, depth, alpha, beta, color, epSq, qDepth) {
+  if (depth <= 0)
+    return qDepth > 0 ? quiesce(b, alpha, beta, color, epSq, qDepth) : evalBoard(b, color);
+  const moves = genAllPseudo(b, color, epSq);
+  if (!moves.length) return evalBoard(b, color);
+  orderMoves(b, moves);
+  let best = -Infinity;
+  for (const m of moves) {
+    const captured = m.ep ? b[m.from.r][m.to.c] : b[m.to.r][m.to.c];
+    if (captured && captured.t === 'K') return 10000 + depth; // illegal position: prior move left king en prise
+    const sim = cloneBoard(b);
+    const newEp = simApply(sim, m);
+    const score = -negamax(sim, depth - 1, -beta, -alpha, enemy(color), newEp, qDepth);
+    if (score > best) best = score;
+    if (best > alpha) alpha = best;
+    if (alpha >= beta) break;
+  }
+  return best;
+}
+
+function chooseAIMove() {
+  const cfg = DIFFICULTY[document.getElementById('difficulty').value] || DIFFICULTY.medium;
+  const moves = allLegalMoves(board, turn, ep);
+  if (!moves.length) return null;
+  orderMoves(board, moves);
+  let best = null, bestScore = -Infinity;
+  for (const m of moves) {
+    const sim = cloneBoard(board);
+    const newEp = simApply(sim, m);
+    let score = -negamax(sim, cfg.depth - 1, -Infinity, Infinity, enemy(turn), newEp, cfg.qDepth);
+    score += (Math.random() * 2 - 1) * cfg.noise;
+    if (score > bestScore) { bestScore = score; best = m; }
+  }
+  return best;
+}
+
+// when the AI's pawn evolves, pick knight vs bishop by mobility from that square
+function aiPickEvolution(r, c) {
+  const p = board[r][c];
+  const orig = p.t;
+  p.t = 'N'; const nMob = pseudoMoves(board, r, c, null).length;
+  p.t = 'B'; const bMob = pseudoMoves(board, r, c, null).length;
+  p.t = orig;
+  return nMob >= bMob ? 'N' : 'B';
+}
+
+function maybeAIMove() {
+  const ai = getAIColor();
+  if (!ai || gameOver || turn !== ai) return;
+  inputLocked = true;
+  setStatus(`${turn === 'w' ? 'White' : 'Black'} (AI) is thinking…`);
+  setTimeout(() => {
+    const m = chooseAIMove();
+    inputLocked = false;
+    if (m) playMove(m);
+  }, 300);
+}
+
+for (const id of ['mode', 'playAs', 'difficulty'])
+  document.getElementById(id).addEventListener('change', maybeAIMove);
+
+document.getElementById('newGameBtn').addEventListener('click', initGame);
+initGame();
+</script>
+</body>
+</html>
