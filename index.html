@@ -148,30 +148,54 @@
     box-shadow: 0 8px 30px rgba(0,0,0,0.4);
   }
 
-  /* Scoreboard */
-  #scoreboard {
+  /* Material captured bars — flank the board (opponent above, player below)
+     instead of living in the side panel, so the board itself never shrinks. */
+  .capBar {
+    display: flex; justify-content: space-between; align-items: center;
+    width: min(92vw, 576px);
+    padding: 6px 12px;
     background: #2d2d38;
     border-radius: 8px;
-    padding: 8px 12px;
-    margin-bottom: 14px;
     font-size: 0.85em;
+    color: #bcc;
   }
-  .scoreRow {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 3px 0;
+  #capBarTop { margin-bottom: 10px; }
+  #capBarBottom { margin-top: 10px; }
+  .capSide { font-weight: 600; color: #fff; }
+  .capPts b { color: #8fd48f; font-family: Consolas, monospace; font-size: 1.05em; }
+  .capLead {
+    font-weight: 700; font-family: Consolas, monospace;
+    padding: 1px 8px; border-radius: 10px;
+    background: rgba(0,0,0,0.25);
+    visibility: hidden;
   }
-  .scoreRow.lead {
-    border-top: 1px solid #4a4a57;
-    margin-top: 4px; padding-top: 6px;
+  .capLead.show { visibility: visible; }
+  .capLead.w { color: #8fd48f; }
+  .capLead.b { color: #ff9d6e; }
+
+  /* Game-over overlay — sits directly on the board instead of the status text */
+  #boardArea { position: relative; }
+  #gameOverOverlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 6px;
+    background: rgba(15, 15, 22, 0.82);
+    backdrop-filter: blur(3px);
+    border-radius: 6px;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.35s ease;
+    z-index: 20;
+    text-align: center;
+    padding: 20px;
   }
-  .scoreLabel { color: #aab; }
-  .scoreLabel.w { color: #fff; }
-  .scoreLabel.b { color: #c9c9d6; }
-  .scoreVal { color: #bcc; }
-  .scoreVal b { color: #8fd48f; font-family: Consolas, monospace; font-size: 1.05em; }
-  .matval { font-weight: 700; font-family: Consolas, monospace; }
-  .matval.lead-w { color: #8fd48f; }
-  .matval.lead-b { color: #ff9d6e; }
+  #gameOverOverlay.show { opacity: 1; pointer-events: auto; }
+  #gameOverIcon { font-size: min(64px, 14vw); filter: drop-shadow(0 0 14px #ffd700); animation: rollPop 0.5s ease; }
+  #gameOverTitle {
+    font-size: min(2em, 8vw); font-weight: 800; color: #ffd700;
+    letter-spacing: 1px; text-shadow: 0 0 18px rgba(255,215,0,0.6);
+  }
+  #gameOverSubtitle { font-size: min(1.1em, 5vw); color: #e8e8f0; margin-bottom: 10px; }
+  #gameOverOverlay button { width: auto; margin-top: 6px; padding: 10px 28px; }
   #status {
     font-size: 1.05em; font-weight: 600;
     padding: 10px 12px;
@@ -243,6 +267,9 @@
   }
   .controls select:hover { border-color: #888; }
   .controls select:focus { outline: none; border-color: #5a82bd; }
+  .controls label.full { grid-column: 1 / -1; }
+
+  #evolutionRules.hidden, #gamblingRules.hidden { display: none; }
 
   /* Modal for evolution / promotion choices */
   #modalOverlay {
@@ -327,7 +354,28 @@
 <div id="boardWrap">
   <h1>♟ CHESS 2.0 <span style="color:#ffd700">RPG</span></h1>
   <div class="subtitle">Capture to evolve. The King watches, unchanged.</div>
-  <div id="board"></div>
+
+  <div class="capBar" id="capBarTop">
+    <span class="capSide">♚ Black</span>
+    <span class="capPts">captured <b id="capB">0</b> pts</span>
+    <span class="capLead b" id="leadB">+0</span>
+  </div>
+
+  <div id="boardArea">
+    <div id="board"></div>
+    <div id="gameOverOverlay">
+      <div id="gameOverIcon">☠</div>
+      <div id="gameOverTitle">Checkmate</div>
+      <div id="gameOverSubtitle">White wins</div>
+      <button id="overlayNewGameBtn">⟳ New Game</button>
+    </div>
+  </div>
+
+  <div class="capBar" id="capBarBottom">
+    <span class="capSide">♔ White</span>
+    <span class="capPts">captured <b id="capW">0</b> pts</span>
+    <span class="capLead w" id="leadW">+0</span>
+  </div>
 </div>
 
 <div id="sidePanel">
@@ -351,7 +399,13 @@
         <option value="b">Black</option>
       </select>
     </label>
-    <label>Gamble
+    <label>Evolution
+      <select id="evolution">
+        <option value="on" selected>On</option>
+        <option value="off">Off</option>
+      </select>
+    </label>
+    <label class="full">Gamble
       <select id="gamble">
         <option value="on" selected>On</option>
         <option value="off">Off</option>
@@ -360,42 +414,31 @@
   </div>
   <div id="status">White to move</div>
 
-  <div id="scoreboard">
-    <div class="scoreRow">
-      <span class="scoreLabel w">♔ White</span>
-      <span class="scoreVal">captured <b id="capW">0</b> pts</span>
-    </div>
-    <div class="scoreRow">
-      <span class="scoreLabel b">♚ Black</span>
-      <span class="scoreVal">captured <b id="capB">0</b> pts</span>
-    </div>
-    <div class="scoreRow lead">
-      <span class="scoreLabel">Material lead</span>
-      <span class="matval" id="matLead">Even</span>
-    </div>
-  </div>
-
   <div class="rules">
     <h2>Capture Values</h2>
     <ul>
       <li><span class="glyph">♙</span>Pawn = <b>1</b> &nbsp;&nbsp; <span class="glyph">♘</span>♗ = <b>3</b> &nbsp;&nbsp; <span class="glyph">♖</span>= <b>5</b> &nbsp;&nbsp; <span class="glyph">♕</span>= <b>10</b></li>
     </ul>
-    <h2>Evolution Paths</h2>
-    <ul>
-      <li><span class="glyph">♙</span>Pawn <b>2 pts</b> → Knight or Bishop (your choice)</li>
-      <li><span class="glyph">♘</span>Knight / ♗ Bishop <b>6 pts</b> → Rook</li>
-      <li><span class="glyph">♖</span>Rook <b>10 pts</b> → Queen</li>
-      <li><span class="glyph">♕</span>Queen <b>20 pts</b> → ⭐ Amazon (Queen + Knight moves)</li>
-      <li><span class="glyph">♔</span>King — never evolves</li>
-      <li style="color:#889; padding-top:6px;">Leftover points carry over after evolving. The counter on each piece shows progress.</li>
-    </ul>
-    <h2>🎲 Gambling</h2>
-    <ul>
-      <li>Set <b>Gamble</b> before the match starts (locked after your first move).</li>
-      <li>When on, any capture lets you <b>gamble</b>: a 50/50 roll.</li>
-      <li>Win → <b>double</b> the points. Lose → your capturing piece is <b style="color:#ff7a7a">destroyed</b> for nothing.</li>
-      <li style="color:#889; padding-top:4px;">Kings never gamble, and you can't risk a piece that's shielding your own King.</li>
-    </ul>
+    <div id="evolutionRules">
+      <h2>Evolution Paths</h2>
+      <ul>
+        <li><span class="glyph">♙</span>Pawn <b>2 pts</b> → Knight or Bishop (your choice)</li>
+        <li><span class="glyph">♘</span>Knight / ♗ Bishop <b>6 pts</b> → Rook</li>
+        <li><span class="glyph">♖</span>Rook <b>10 pts</b> → Queen</li>
+        <li><span class="glyph">♕</span>Queen <b>20 pts</b> → ⭐ Amazon (Queen + Knight moves)</li>
+        <li><span class="glyph">♔</span>King — never evolves</li>
+        <li style="color:#889; padding-top:6px;">Leftover points carry over after evolving. The counter on each piece shows progress.</li>
+      </ul>
+    </div>
+    <div id="gamblingRules">
+      <h2>🎲 Gambling</h2>
+      <ul>
+        <li>Toggle <b>Gamble</b> any time — it applies from your next capture.</li>
+        <li>When on, any capture lets you <b>gamble</b>: a 50/50 roll.</li>
+        <li>Win → <b>double</b> the points. Lose → your capturing piece is <b style="color:#ff7a7a">destroyed</b> for nothing.</li>
+        <li style="color:#889; padding-top:4px;">Kings never gamble, and you can't risk a piece that's shielding your own King.</li>
+      </ul>
+    </div>
   </div>
 
   <div id="log"><div style="color:#667">— move log —</div></div>
@@ -428,7 +471,6 @@ const FILES = 'abcdefgh';
 // ---------- State ----------
 let board, turn, ep, selected, legalCache, lastMove, gameOver, moveNum, inputLocked;
 let history, captured, halfmoveClock, positionKeys;
-let gambleEnabled;             // locked in at the start of each match
 let gameId = 0; // bumped each New Game; stale async callbacks bail when it changes
 
 const GAMBLE_WIN = 0.5; // probability a gamble pays off
@@ -459,8 +501,9 @@ function initGame() {
   captured = { w: 0, b: 0 };
   halfmoveClock = 0;
   positionKeys = [];
-  gambleEnabled = document.getElementById('gamble').value === 'on'; // locked for this match
   document.getElementById('log').innerHTML = '<div style="color:#667">— move log —</div>';
+  hideGameOverOverlay();
+  refreshRulesVisibility();
   pushPositionKey();
   render();
   setStatus('White to move');
@@ -707,6 +750,7 @@ function flashResult(win, text, cb) {
 function evolveChain(r, c, done) {
   const p = board[r][c];
   if (!p || p.t === 'K') return done();
+  if (!getEvolutionOn()) return done();
   if (p.t === 'Q' && p.amazon) return done();
   const need = THRESH[p.t];
   if (p.pts < need) return done();
@@ -858,11 +902,14 @@ function checkGameEnd() {
   if (moves.length === 0) {
     gameOver = true;
     if (checked) {
-      setStatus(`☠ CHECKMATE — ${turn === 'w' ? 'Black' : 'White'} wins!`, 'gameover');
-      logEvo(`Checkmate. ${turn === 'w' ? 'Black' : 'White'} wins.`);
+      const winner = turn === 'w' ? 'Black' : 'White';
+      setStatus(`☠ CHECKMATE — ${winner} wins!`, 'gameover');
+      logEvo(`Checkmate. ${winner} wins.`);
+      showGameOverOverlay('☠', 'Checkmate', `${winner} wins`);
     } else {
       setStatus('½ STALEMATE — draw', 'gameover');
       logEvo('Stalemate. Draw.');
+      showGameOverOverlay('½', 'Stalemate', 'Draw');
     }
     render();
     return;
@@ -876,6 +923,7 @@ function checkGameEnd() {
     gameOver = true;
     setStatus(`½ DRAW — ${draw}`, 'gameover');
     logEvo(`Draw — ${draw}.`);
+    showGameOverOverlay('½', 'Draw', draw.charAt(0).toUpperCase() + draw.slice(1));
     render();
     return;
   }
@@ -932,6 +980,22 @@ function setStatus(text, cls) {
   const el = document.getElementById('status');
   el.textContent = text;
   el.className = cls || '';
+}
+
+function showGameOverOverlay(icon, title, subtitle) {
+  document.getElementById('gameOverIcon').textContent = icon;
+  document.getElementById('gameOverTitle').textContent = title;
+  document.getElementById('gameOverSubtitle').textContent = subtitle;
+  document.getElementById('gameOverOverlay').classList.add('show');
+}
+
+function hideGameOverOverlay() {
+  document.getElementById('gameOverOverlay').classList.remove('show');
+}
+
+function refreshRulesVisibility() {
+  document.getElementById('evolutionRules').classList.toggle('hidden', !getEvolutionOn());
+  document.getElementById('gamblingRules').classList.toggle('hidden', !getGambleOn());
 }
 
 function logMove(text) {
@@ -994,8 +1058,8 @@ function render() {
         span.textContent = GLYPHS[p.c][p.t];
         sq.appendChild(span);
 
-        // evolution counter — top right of the square
-        if (p.t !== 'K') {
+        // evolution counter — top right of the square (hidden while Evolution is off)
+        if (p.t !== 'K' && getEvolutionOn()) {
           const ctr = document.createElement('span');
           if (p.t === 'Q' && p.amazon) {
             ctr.className = 'counter max';
@@ -1038,10 +1102,12 @@ function updateScoreboard() {
   document.getElementById('capW').textContent = captured.w;
   document.getElementById('capB').textContent = captured.b;
   const diff = materialOf('w') - materialOf('b');
-  const el = document.getElementById('matLead');
-  if (diff > 0) { el.textContent = `White +${diff}`; el.className = 'matval lead-w'; }
-  else if (diff < 0) { el.textContent = `Black +${-diff}`; el.className = 'matval lead-b'; }
-  else { el.textContent = 'Even'; el.className = 'matval'; }
+  const leadW = document.getElementById('leadW');
+  const leadB = document.getElementById('leadB');
+  leadW.classList.toggle('show', diff > 0);
+  leadB.classList.toggle('show', diff < 0);
+  if (diff > 0) leadW.textContent = `▲ +${diff}`;
+  if (diff < 0) leadB.textContent = `▲ +${-diff}`;
 }
 
 function onSquareClick(r, c) {
@@ -1091,7 +1157,11 @@ function getHumanColor() {
 }
 
 function getGambleOn() {
-  return gambleEnabled; // fixed at match start, not changeable mid-game
+  return document.getElementById('gamble').value === 'on'; // togglable mid-game
+}
+
+function getEvolutionOn() {
+  return document.getElementById('evolution').value === 'on'; // togglable mid-game
 }
 
 // ---------- Undo ----------
@@ -1123,6 +1193,7 @@ function restoreSnapshot(s) {
   legalCache = [];
   inputLocked = false;
   document.getElementById('modalOverlay').classList.remove('open');
+  if (!gameOver) hideGameOverOverlay();
 }
 
 function undo() {
@@ -1160,6 +1231,7 @@ function genAllPseudo(b, color, epSq) {
 
 // auto-resolve evolution inside the search (pawn defaults to knight)
 function autoEvolve(p) {
+  if (!getEvolutionOn()) return;
   while (p.t !== 'K' && !(p.t === 'Q' && p.amazon) && p.pts >= THRESH[p.t]) {
     p.pts -= THRESH[p.t];
     if (p.t === 'P') p.t = 'N';
@@ -1188,8 +1260,8 @@ function evalBoard(b, color) {
       const p = b[r][c];
       if (!p) continue;
       let v = (p.t === 'Q' && p.amazon) ? 13 : VALUES[p.t];
-      // banked evolution points are future power
-      if (p.t !== 'K' && !(p.t === 'Q' && p.amazon))
+      // banked evolution points are future power (only while Evolution is on)
+      if (getEvolutionOn() && p.t !== 'K' && !(p.t === 'Q' && p.amazon))
         v += (p.pts / THRESH[p.t]) * EVO_GAIN[p.t] * 0.6;
       const centerDist = Math.abs(3.5 - r) + Math.abs(3.5 - c);
       if (p.t === 'N' || p.t === 'B') v += (6 - centerDist) * 0.03;
@@ -1294,14 +1366,21 @@ function maybeAIMove() {
 for (const id of ['mode', 'playAs', 'difficulty'])
   document.getElementById(id).addEventListener('change', maybeAIMove);
 
-// Gambling is a per-match setting: editable until the first move, then locked.
+// Evolution and Gambling are togglable live, at any point in the game.
+document.getElementById('evolution').addEventListener('change', () => {
+  const on = document.getElementById('evolution').value === 'on';
+  refreshRulesVisibility();
+  render();
+  if (history.length > 0) logEvo(`Evolution turned ${on ? 'ON' : 'OFF'}.`);
+});
 document.getElementById('gamble').addEventListener('change', () => {
   const on = document.getElementById('gamble').value === 'on';
-  if (history.length === 0) gambleEnabled = on;            // match not started yet — apply now
-  else logEvo(`Gambling ${on ? 'ON' : 'OFF'} — takes effect on the next New Game.`);
+  refreshRulesVisibility();
+  if (history.length > 0) logEvo(`Gambling turned ${on ? 'ON' : 'OFF'}.`);
 });
 
 document.getElementById('newGameBtn').addEventListener('click', initGame);
+document.getElementById('overlayNewGameBtn').addEventListener('click', initGame);
 document.getElementById('undoBtn').addEventListener('click', undo);
 initGame();
 </script>
