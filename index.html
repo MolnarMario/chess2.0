@@ -123,6 +123,20 @@
     filter: drop-shadow(0 0 3px #ffd700);
   }
 
+  /* Ring around a piece that just captured here — stays until the next move is made */
+  .captureRing {
+    position: absolute; inset: 3px;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 40, 40, 0.9);
+    z-index: 4;
+    pointer-events: none;
+    animation: captureRingPulse 1.3s ease-in-out infinite;
+  }
+  @keyframes captureRingPulse {
+    0%, 100% { box-shadow: 0 0 6px 2px rgba(255, 40, 40, 0.5); border-color: rgba(255, 40, 40, 0.8); }
+    50%      { box-shadow: 0 0 16px 5px rgba(255, 60, 60, 0.85); border-color: rgba(255, 90, 90, 1); }
+  }
+
   .coord {
     position: absolute;
     font-size: 10px; font-weight: 700;
@@ -792,6 +806,7 @@ function playMove(m) {
   const p = board[m.from.r][m.from.c];
   const moverColor = p.c;
   const capturedPiece = m.ep ? board[m.from.r][m.to.c] : board[m.to.r][m.to.c];
+  m.captured = !!capturedPiece; // drives the on-board capture indicator until the next move
   const wasPawnMove = p.t === 'P';
   const moveText = `${moveNum}. ${turn === 'w' ? '' : '… '}${NAMES[p.t]} ${sqName(m.from.r, m.from.c)}${capturedPiece ? '×' : '–'}${sqName(m.to.r, m.to.c)}`;
 
@@ -1076,6 +1091,12 @@ function render() {
           badge.className = 'amazon-badge';
           badge.textContent = '⭐';
           sq.appendChild(badge);
+        }
+        // ring around a piece that just captured here — clears the moment the next move is made
+        if (lastMove && lastMove.captured && lastMove.to.r === r && lastMove.to.c === c) {
+          const ring = document.createElement('span');
+          ring.className = 'captureRing';
+          sq.appendChild(ring);
         }
       }
 
