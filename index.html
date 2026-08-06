@@ -187,6 +187,28 @@
   .capLead.w { color: #8fd48f; }
   .capLead.b { color: #ff9d6e; }
 
+  /* Per-side countdown clock, shown inline in the capture bars */
+  .capBar { flex-wrap: wrap; row-gap: 4px; }
+  .clockDisplay {
+    font-family: Consolas, monospace;
+    font-weight: 700;
+    font-size: 1.05em;
+    padding: 2px 10px;
+    border-radius: 8px;
+    background: rgba(0,0,0,0.25);
+    color: #bcc;
+    visibility: hidden;
+    letter-spacing: 0.5px;
+  }
+  .clockDisplay.show { visibility: visible; }
+  .clockDisplay.active { background: #3a5a3a; color: #dfe; box-shadow: 0 0 8px rgba(140,255,140,0.4); }
+  .clockDisplay.low { color: #ff6b6b; }
+  .clockDisplay.low.active { animation: clockPulse 1s ease-in-out infinite; }
+  @keyframes clockPulse {
+    0%, 100% { box-shadow: 0 0 8px rgba(255,60,60,0.3); }
+    50%      { box-shadow: 0 0 14px rgba(255,60,60,0.75); }
+  }
+
   /* Game-over overlay — sits directly on the board instead of the status text */
   #boardArea { position: relative; }
   #gameOverOverlay {
@@ -259,6 +281,9 @@
   #undoBtn { background: #6a5a8a; }
   #undoBtn:hover { background: #7d6ba3; }
   #undoBtn:disabled { background: #44444f; color: #888; cursor: default; }
+  #resignBtn { background: #8a3a3a; }
+  #resignBtn:hover { background: #a34a4a; }
+  #resignBtn:disabled { background: #44444f; color: #888; cursor: default; }
 
   .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 8px; margin-bottom: 14px; }
   .controls label {
@@ -283,7 +308,59 @@
   .controls select:focus { outline: none; border-color: #5a82bd; }
   .controls label.full { grid-column: 1 / -1; }
 
-  #evolutionRules.hidden, #gamblingRules.hidden { display: none; }
+  .controls input[type="text"], .controls input[type="number"] {
+    width: 100%;
+    color: #eee;
+    background-color: #2d2d38;
+    border: 1px solid #555; border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 0.85rem;
+    font-family: Consolas, monospace;
+  }
+  .controls input[type="text"]:focus, .controls input[type="number"]:focus { outline: none; border-color: #5a82bd; }
+  .controls input:disabled { opacity: 0.5; }
+  .controls label.checkboxLabel {
+    flex-direction: row; align-items: center; gap: 6px;
+    text-transform: none; letter-spacing: normal; font-size: 0.8em; color: #bcc;
+  }
+  .controls label.checkboxLabel input { width: auto; }
+  #clockSettings { margin-top: -2px; margin-bottom: 14px; }
+  #clockSettings.hidden { display: none; }
+
+  #evolutionRules.hidden, #gamblingRules.hidden, #clockRulesInfo.hidden { display: none; }
+
+  /* Board setup / editor */
+  #gamePanel.hidden, #setupPanel.hidden { display: none; }
+  #setupPanel h2 { font-size: 1em; color: #ffd700; text-align: center; margin-bottom: 10px; letter-spacing: 0.5px; }
+  #setupPalette {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    justify-content: center;
+    margin: 4px 0 12px;
+    padding: 10px;
+    background: #2d2d38;
+    border-radius: 8px;
+  }
+  .paletteBtn {
+    width: 38px; height: 38px;
+    font-size: 24px;
+    border: 2px solid #555;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0; padding: 0;
+  }
+  .paletteBtn.white { background: #cfd4da; color: #14141a; border-color: #8a8f96; }
+  .paletteBtn.white:hover { border-color: #fff; }
+  .paletteBtn.black { background: #1c1c24; color: #f0f0f5; border-color: #555; }
+  .paletteBtn.black:hover { border-color: #ccc; }
+  .paletteBtn.eraser { background: #2d2d38; color: #ff8a8a; font-size: 18px; }
+  .paletteBtn.active { border-color: #ffd700 !important; box-shadow: 0 0 8px rgba(255,215,0,0.6); }
+  #setupWarning { color: #ff7a7a; font-size: 0.8em; min-height: 1.2em; text-align: center; margin: 2px 0 4px; }
+  #setupPanel .btnRow button { font-size: 0.9em; }
+  #setupPanel #setupStartBtn { background: #3a7a4a; }
+  #setupPanel #setupStartBtn:hover { background: #4a944a; }
+  #setupPanel #setupCancelBtn { background: #5a5a66; }
+  #setupPanel #setupCancelBtn:hover { background: #6a6a78; }
 
   /* Modal for evolution / promotion choices */
   #modalOverlay {
@@ -371,6 +448,7 @@
 
   <div class="capBar" id="capBarTop">
     <span class="capSide">♚ Black</span>
+    <span class="clockDisplay" id="clockB">--:--</span>
     <span class="capPts">captured <b id="capB">0</b> pts</span>
     <span class="capLead b" id="leadB">+0</span>
   </div>
@@ -387,6 +465,7 @@
 
   <div class="capBar" id="capBarBottom">
     <span class="capSide">♔ White</span>
+    <span class="clockDisplay" id="clockW">--:--</span>
     <span class="capPts">captured <b id="capW">0</b> pts</span>
     <span class="capLead w" id="leadW">+0</span>
   </div>
@@ -419,46 +498,151 @@
         <option value="off">Off</option>
       </select>
     </label>
-    <label class="full">Gamble
+    <label>Gamble
       <select id="gamble">
         <option value="on" selected>On</option>
         <option value="off">Off</option>
       </select>
     </label>
-  </div>
-  <div id="status">White to move</div>
-
-  <div class="rules">
-    <h2>Capture Values</h2>
-    <ul>
-      <li><span class="glyph">♙</span>Pawn = <b>1</b> &nbsp;&nbsp; <span class="glyph">♘</span>♗ = <b>3</b> &nbsp;&nbsp; <span class="glyph">♖</span>= <b>5</b> &nbsp;&nbsp; <span class="glyph">♕</span>= <b>10</b></li>
-    </ul>
-    <div id="evolutionRules">
-      <h2>Evolution Paths</h2>
-      <ul>
-        <li><span class="glyph">♙</span>Pawn <b>2 pts</b> → Knight or Bishop (your choice)</li>
-        <li><span class="glyph">♘</span>Knight / ♗ Bishop <b>6 pts</b> → Rook</li>
-        <li><span class="glyph">♖</span>Rook <b>10 pts</b> → Queen</li>
-        <li><span class="glyph">♕</span>Queen <b>20 pts</b> → ⭐ Amazon (Queen + Knight moves)</li>
-        <li><span class="glyph">♔</span>King — never evolves</li>
-        <li style="color:#889; padding-top:6px;">Leftover points carry over after evolving. The counter on each piece shows progress.</li>
-      </ul>
-    </div>
-    <div id="gamblingRules">
-      <h2>🎲 Gambling</h2>
-      <ul>
-        <li>Toggle <b>Gamble</b> any time — it applies from your next capture.</li>
-        <li>When on, any capture lets you <b>gamble</b>: a 50/50 roll.</li>
-        <li>Win → <b>double</b> the points. Lose → your capturing piece is <b style="color:#ff7a7a">destroyed</b> for nothing.</li>
-        <li style="color:#889; padding-top:4px;">Kings never gamble, and you can't risk a piece that's shielding your own King.</li>
-      </ul>
-    </div>
+    <label>Clock
+      <select id="clockToggle">
+        <option value="off" selected>Off</option>
+        <option value="on">On</option>
+      </select>
+    </label>
   </div>
 
-  <div id="log"><div style="color:#667">— move log —</div></div>
-  <div class="btnRow">
-    <button id="undoBtn" disabled>↶ Undo</button>
-    <button id="newGameBtn">⟳ New Game</button>
+  <div id="clockSettings" class="hidden">
+    <div class="controls">
+      <label class="full">Time Control
+        <select id="clockPreset">
+          <option value="bullet1">Bullet — 1+0</option>
+          <option value="bullet2_1">Bullet — 2+1</option>
+          <option value="blitz3">Blitz — 3+0</option>
+          <option value="blitz3_2">Blitz — 3+2</option>
+          <option value="blitz5" selected>Blitz — 5+0</option>
+          <option value="blitz5_3">Blitz — 5+3</option>
+          <option value="rapid10">Rapid — 10+0</option>
+          <option value="rapid10_5">Rapid — 10+5</option>
+          <option value="rapid15_10">Rapid — 15+10</option>
+          <option value="classical30">Classical — 30+0</option>
+          <option value="classical30_20">Classical — 30+20</option>
+          <option value="custom">Custom</option>
+        </select>
+      </label>
+      <label>White Time
+        <input type="text" id="whiteTime" value="5:00">
+      </label>
+      <label>Black Time
+        <input type="text" id="blackTime" value="5:00" disabled>
+      </label>
+      <label class="full checkboxLabel">
+        <input type="checkbox" id="sameTime" checked> Same starting time for both sides (uncheck for a time-odds handicap)
+      </label>
+      <label>White Increment (s)
+        <input type="number" id="whiteInc" min="0" value="0">
+      </label>
+      <label>Black Increment (s)
+        <input type="number" id="blackInc" min="0" value="0" disabled>
+      </label>
+      <label class="full checkboxLabel">
+        <input type="checkbox" id="sameInc" checked> Same increment for both sides
+      </label>
+      <label>Increment Type
+        <select id="incMode">
+          <option value="fischer" selected>Fischer (full add, every move)</option>
+          <option value="delay">Bronstein (delay — banks time actually used)</option>
+        </select>
+      </label>
+      <label>Increment Starts
+        <select id="incActivation">
+          <option value="always" selected>From move 1</option>
+          <option value="threshold">Only under time</option>
+        </select>
+      </label>
+      <label class="full" id="incThresholdRow" style="display:none;">Threshold (remaining time)
+        <input type="text" id="incThreshold" value="2:00">
+      </label>
+    </div>
+  </div>
+
+  <div id="setupPanel" class="hidden">
+    <h2>⚙ Board Setup</h2>
+    <div class="controls">
+      <label class="full">Start From
+        <select id="setupBasis">
+          <option value="empty">Empty Board (from scratch)</option>
+          <option value="standard" selected>Default Start Position</option>
+          <option value="chess960">Chess960 (Random)</option>
+        </select>
+      </label>
+      <label class="full">Side to Move First
+        <select id="setupSideToMove">
+          <option value="w" selected>White</option>
+          <option value="b">Black</option>
+        </select>
+      </label>
+    </div>
+    <div id="setupPalette"></div>
+    <div class="btnRow">
+      <button id="setupClearBtn">🗑 Clear Board</button>
+      <button id="setupRerollBtn">🎲 Reroll 960</button>
+    </div>
+    <div id="setupWarning"></div>
+    <div class="btnRow">
+      <button id="setupCancelBtn">✕ Cancel</button>
+      <button id="setupStartBtn">▶ Start Game</button>
+    </div>
+  </div>
+
+  <div id="gamePanel">
+    <div id="status">White to move</div>
+
+    <div class="rules">
+      <h2>Capture Values</h2>
+      <ul>
+        <li><span class="glyph">♙</span>Pawn = <b>1</b> &nbsp;&nbsp; <span class="glyph">♘</span>♗ = <b>3</b> &nbsp;&nbsp; <span class="glyph">♖</span>= <b>5</b> &nbsp;&nbsp; <span class="glyph">♕</span>= <b>10</b></li>
+      </ul>
+      <div id="evolutionRules">
+        <h2>Evolution Paths</h2>
+        <ul>
+          <li><span class="glyph">♙</span>Pawn <b>2 pts</b> → Knight or Bishop (your choice)</li>
+          <li><span class="glyph">♘</span>Knight / ♗ Bishop <b>6 pts</b> → Rook</li>
+          <li><span class="glyph">♖</span>Rook <b>10 pts</b> → Queen</li>
+          <li><span class="glyph">♕</span>Queen <b>20 pts</b> → ⭐ Amazon (Queen + Knight moves)</li>
+          <li><span class="glyph">♔</span>King — never evolves</li>
+          <li style="color:#889; padding-top:6px;">Leftover points carry over after evolving. The counter on each piece shows progress.</li>
+        </ul>
+      </div>
+      <div id="gamblingRules">
+        <h2>🎲 Gambling</h2>
+        <ul>
+          <li>Toggle <b>Gamble</b> any time — it applies from your next capture.</li>
+          <li>When on, any capture lets you <b>gamble</b>: a 50/50 roll.</li>
+          <li>Win → <b>double</b> the points. Lose → your capturing piece is <b style="color:#ff7a7a">destroyed</b> for nothing.</li>
+          <li style="color:#889; padding-top:4px;">Kings never gamble, and you can't risk a piece that's shielding your own King.</li>
+        </ul>
+      </div>
+      <div id="clockRulesInfo">
+        <h2>⏱ Clock</h2>
+        <ul>
+          <li>Set equal times, or uneven ones for a handicap. Increments can be equal or lopsided too.</li>
+          <li><b>Fischer</b> adds the full increment every move; <b>Bronstein</b> only banks back the time you actually used (never more than the increment).</li>
+          <li>Increments can apply from move 1, or only once a clock falls under a chosen threshold.</li>
+          <li style="color:#889; padding-top:4px;">Running out of time loses — unless your opponent has no material left to checkmate you, which is a draw.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div id="log"><div style="color:#667">— move log —</div></div>
+    <div class="btnRow">
+      <button id="undoBtn" disabled>↶ Undo</button>
+      <button id="resignBtn">🏳 Resign</button>
+    </div>
+    <div class="btnRow">
+      <button id="setupBtn">⚙ Set Up Board</button>
+      <button id="newGameBtn">⟳ New Game</button>
+    </div>
   </div>
 </div>
 
@@ -487,23 +671,67 @@ let board, turn, ep, selected, legalCache, lastMove, gameOver, moveNum, inputLoc
 let history, captured, halfmoveClock, positionKeys;
 let gameId = 0; // bumped each New Game; stale async callbacks bail when it changes
 
+// ---------- Clock state ----------
+let clockTime = { w: 0, b: 0 };       // ms remaining, per side
+let clockIncSetting = { w: 0, b: 0 }; // ms added per move, per side
+let incrementMode = 'fischer';        // 'fischer' | 'delay'
+let incrementThresholdMs = 0;         // 0 = increment always active
+let clockRunning = false;
+let clockTurnStart = 0;
+let clockIntervalId = null;
+
+// ---------- Board setup / editor state ----------
+let setupMode = false;
+let editorBoard = null;
+let editorTool = { type: 'K', color: 'w' }; // null = eraser
+
 const GAMBLE_WIN = 0.5; // probability a gamble pays off
 
 function newPiece(t, c) {
   return { t, c, pts: 0, moved: false, amazon: false };
 }
 
-function initGame() {
-  gameId++;
-  board = Array.from({ length: 8 }, () => Array(8).fill(null));
-  const back = ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R'];
+function backRankBoard(back) {
+  const b = Array.from({ length: 8 }, () => Array(8).fill(null));
   for (let col = 0; col < 8; col++) {
-    board[0][col] = newPiece(back[col], 'b');
-    board[1][col] = newPiece('P', 'b');
-    board[6][col] = newPiece('P', 'w');
-    board[7][col] = newPiece(back[col], 'w');
+    b[0][col] = newPiece(back[col], 'b');
+    b[1][col] = newPiece('P', 'b');
+    b[6][col] = newPiece('P', 'w');
+    b[7][col] = newPiece(back[col], 'w');
   }
-  turn = 'w';
+  return b;
+}
+
+function standardBoard() {
+  return backRankBoard(['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R']);
+}
+
+// Fischer Random: bishops on opposite-colored squares, king between the two rooks
+function chess960BackRank() {
+  const files = Array(8).fill(null);
+  const emptyIdx = () => files.reduce((acc, v, i) => { if (v === null) acc.push(i); return acc; }, []);
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+
+  let e = emptyIdx();
+  files[pick(e.filter(i => i % 2 === 0))] = 'B';
+  e = emptyIdx();
+  files[pick(e.filter(i => i % 2 === 1))] = 'B';
+  e = emptyIdx();
+  files[pick(e)] = 'Q';
+  for (let i = 0; i < 2; i++) { e = emptyIdx(); files[pick(e)] = 'N'; }
+  e = emptyIdx(); // remaining 3 files, ascending order → Rook, King, Rook
+  files[e[0]] = 'R'; files[e[1]] = 'K'; files[e[2]] = 'R';
+  return files;
+}
+
+function chess960Board() {
+  return backRankBoard(chess960BackRank());
+}
+
+function initGame(startBoard, startTurn) {
+  gameId++;
+  board = startBoard ? cloneBoard(startBoard) : standardBoard();
+  turn = startTurn || 'w';
   ep = null;            // en-passant target square {r, c}
   selected = null;
   legalCache = [];
@@ -518,9 +746,11 @@ function initGame() {
   document.getElementById('log').innerHTML = '<div style="color:#667">— move log —</div>';
   hideGameOverOverlay();
   refreshRulesVisibility();
+  initClockState();
   pushPositionKey();
   render();
-  setStatus('White to move');
+  checkGameEnd();
+  if (!gameOver && getClockOn()) startClockFor(turn); else renderClocks();
   setTimeout(maybeAIMove, 100);
 }
 
@@ -528,6 +758,166 @@ function initGame() {
 const inB = (r, c) => r >= 0 && r < 8 && c >= 0 && c < 8;
 const sqName = (r, c) => FILES[c] + (8 - r);
 const enemy = c => (c === 'w' ? 'b' : 'w');
+
+// ---------- Clock ----------
+const CLOCK_PRESETS = {
+  bullet1:        { time: 60,   inc: 0 },
+  bullet2_1:      { time: 120,  inc: 1 },
+  blitz3:         { time: 180,  inc: 0 },
+  blitz3_2:       { time: 180,  inc: 2 },
+  blitz5:         { time: 300,  inc: 0 },
+  blitz5_3:       { time: 300,  inc: 3 },
+  rapid10:        { time: 600,  inc: 0 },
+  rapid10_5:      { time: 600,  inc: 5 },
+  rapid15_10:     { time: 900,  inc: 10 },
+  classical30:    { time: 1800, inc: 0 },
+  classical30_20: { time: 1800, inc: 20 }
+};
+
+function getClockOn() {
+  return document.getElementById('clockToggle').value === 'on'; // togglable mid-game (pauses/resumes)
+}
+
+function parseClockTime(str) {
+  if (!str) return 0;
+  const parts = String(str).split(':').map(s => parseInt(s, 10) || 0);
+  let secs = 0;
+  for (const p of parts) secs = secs * 60 + p;
+  return Math.max(0, secs);
+}
+
+function formatMMSS(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60), s = Math.floor(totalSeconds % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function formatClock(ms) {
+  if (ms < 0) ms = 0;
+  const totalSec = ms / 1000;
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = Math.floor(totalSec % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  if (ms < 10000) return `${m}:${String(s).padStart(2, '0')}.${Math.floor((totalSec * 10) % 10)}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function readClockSettings() {
+  const wt = parseClockTime(document.getElementById('whiteTime').value);
+  const bt = document.getElementById('sameTime').checked ? wt : parseClockTime(document.getElementById('blackTime').value);
+  const wi = parseInt(document.getElementById('whiteInc').value, 10) || 0;
+  const bi = document.getElementById('sameInc').checked ? wi : (parseInt(document.getElementById('blackInc').value, 10) || 0);
+  const mode = document.getElementById('incMode').value;
+  const activation = document.getElementById('incActivation').value;
+  const threshold = activation === 'threshold' ? parseClockTime(document.getElementById('incThreshold').value) : 0;
+  return {
+    time: { w: wt * 1000, b: bt * 1000 },
+    inc: { w: wi * 1000, b: bi * 1000 },
+    mode, thresholdMs: threshold * 1000
+  };
+}
+
+function initClockState() {
+  const cs = readClockSettings();
+  clockTime = { w: cs.time.w, b: cs.time.b };
+  clockIncSetting = cs.inc;
+  incrementMode = cs.mode;
+  incrementThresholdMs = cs.thresholdMs;
+  clockRunning = false;
+  clockTurnStart = 0;
+  lastTickSecond = { w: null, b: null };
+  clearInterval(clockIntervalId);
+  clockIntervalId = setInterval(clockTick, 100);
+}
+
+function startClockFor(color) {
+  clockTurnStart = Date.now();
+  clockRunning = true;
+  renderClocks();
+}
+
+// stops the mover's clock at the instant their move is submitted, banking any increment
+function clockConsumeTurn(color) {
+  if (!clockRunning) return;
+  const elapsed = Date.now() - clockTurnStart;
+  let remaining = Math.max(0, clockTime[color] - elapsed);
+  const inc = clockIncSetting[color];
+  let addInc = 0;
+  if (inc > 0) {
+    const active = incrementThresholdMs <= 0 || remaining <= incrementThresholdMs;
+    if (active) addInc = incrementMode === 'delay' ? Math.min(elapsed, inc) : inc;
+  }
+  clockTime[color] = remaining + addInc;
+  clockRunning = false;
+  renderClocks();
+}
+
+// pauses the active side's clock without switching turns or granting increment (used by the on/off toggle)
+function pauseClock() {
+  if (clockRunning) {
+    const elapsed = Date.now() - clockTurnStart;
+    clockTime[turn] = Math.max(0, clockTime[turn] - elapsed);
+    clockRunning = false;
+  }
+  renderClocks();
+}
+
+function clockTick() {
+  if (!clockRunning || gameOver || !getClockOn()) return;
+  const elapsed = Date.now() - clockTurnStart;
+  const remaining = clockTime[turn] - elapsed;
+  if (remaining <= 0) {
+    clockTime[turn] = 0;
+    clockRunning = false;
+    renderClocks();
+    flagSound();
+    handleFlagFall(turn);
+    return;
+  }
+  const wholeSec = Math.ceil(remaining / 1000);
+  if (wholeSec <= 10 && wholeSec !== lastTickSecond[turn]) {
+    lastTickSecond[turn] = wholeSec;
+    clockTickSound();
+  }
+  renderClocks();
+}
+
+function handleFlagFall(color) {
+  gameOver = true;
+  const loser = color === 'w' ? 'White' : 'Black';
+  const winner = color === 'w' ? 'Black' : 'White';
+  if (insufficientMaterial()) {
+    setStatus(`½ DRAW — ${loser} flagged, but ${winner} lacks material to checkmate`, 'gameover');
+    logEvo(`${loser}'s flag fell — draw (opponent has insufficient mating material).`);
+    showGameOverOverlay('½', 'Draw', 'Time forfeit, insufficient material');
+  } else {
+    setStatus(`⏱ TIME — ${winner} wins on time!`, 'gameover');
+    logEvo(`${loser} ran out of time. ${winner} wins.`);
+    showGameOverOverlay('⏱', 'Time Forfeit', `${winner} wins`);
+  }
+  render();
+}
+
+function renderClocks() {
+  const wEl = document.getElementById('clockW');
+  const bEl = document.getElementById('clockB');
+  const on = getClockOn();
+  wEl.classList.toggle('show', on);
+  bEl.classList.toggle('show', on);
+  if (!on) return;
+  let wMs = clockTime.w, bMs = clockTime.b;
+  if (clockRunning) {
+    const elapsed = Date.now() - clockTurnStart;
+    if (turn === 'w') wMs -= elapsed; else bMs -= elapsed;
+  }
+  wMs = Math.max(0, wMs); bMs = Math.max(0, bMs);
+  wEl.textContent = formatClock(wMs);
+  bEl.textContent = formatClock(bMs);
+  wEl.classList.toggle('active', clockRunning && turn === 'w');
+  bEl.classList.toggle('active', clockRunning && turn === 'b');
+  wEl.classList.toggle('low', wMs < 20000);
+  bEl.classList.toggle('low', bMs < 20000);
+}
 
 function cloneBoard(b) {
   return b.map(row => row.map(p => (p ? { ...p } : null)));
@@ -802,6 +1192,7 @@ function flashEvolve(r, c, then) {
 // ---------- Game flow ----------
 function playMove(m) {
   pushHistory();              // snapshot full state for Undo (before any mutation)
+  if (getClockOn()) clockConsumeTurn(turn);
   inputLocked = true;
   const p = board[m.from.r][m.from.c];
   const moverColor = p.c;
@@ -834,6 +1225,7 @@ function playMove(m) {
     render();
     pushPositionKey();
     checkGameEnd();
+    if (!gameOver && getClockOn()) startClockFor(turn); else renderClocks();
     maybeAIMove();
   };
 
@@ -1011,6 +1403,8 @@ function hideGameOverOverlay() {
 function refreshRulesVisibility() {
   document.getElementById('evolutionRules').classList.toggle('hidden', !getEvolutionOn());
   document.getElementById('gamblingRules').classList.toggle('hidden', !getGambleOn());
+  document.getElementById('clockRulesInfo').classList.toggle('hidden', !getClockOn());
+  document.getElementById('clockSettings').classList.toggle('hidden', !getClockOn());
 }
 
 function logMove(text) {
@@ -1031,6 +1425,7 @@ function logEvo(text) {
 }
 
 function render() {
+  if (setupMode) return renderSetupBoard();
   const boardEl = document.getElementById('board');
   boardEl.innerHTML = '';
   const checkedKing = inCheck(board, turn) && !gameOver ? findKing(board, turn) : null;
@@ -1106,6 +1501,7 @@ function render() {
   }
   updateScoreboard();
   refreshUndoBtn();
+  refreshResignBtn();
 }
 
 // ---------- Scoreboard ----------
@@ -1159,6 +1555,126 @@ function onSquareClick(r, c) {
   render();
 }
 
+// ---------- Board setup / editor ----------
+function renderSetupBoard() {
+  const boardEl = document.getElementById('board');
+  boardEl.innerHTML = '';
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const sq = document.createElement('div');
+      sq.className = `sq ${(r + c) % 2 === 0 ? 'light' : 'dark'}`;
+      sq.dataset.r = r; sq.dataset.c = c;
+      if (r === 7) {
+        const f = document.createElement('span');
+        f.className = 'coord file'; f.textContent = FILES[c];
+        sq.appendChild(f);
+      }
+      if (c === 0) {
+        const rk = document.createElement('span');
+        rk.className = 'coord rank'; rk.textContent = 8 - r;
+        sq.appendChild(rk);
+      }
+      const p = editorBoard[r][c];
+      if (p) {
+        const span = document.createElement('span');
+        span.className = `piece ${p.c === 'w' ? 'white' : 'black'}`;
+        span.textContent = GLYPHS[p.c][p.t];
+        sq.appendChild(span);
+      }
+      sq.addEventListener('click', () => onSetupSquareClick(r, c));
+      boardEl.appendChild(sq);
+    }
+  }
+}
+
+function onSetupSquareClick(r, c) {
+  editorBoard[r][c] = editorTool ? newPiece(editorTool.type, editorTool.color) : null;
+  document.getElementById('setupWarning').textContent = '';
+  render();
+}
+
+function buildSetupPalette() {
+  const box = document.getElementById('setupPalette');
+  box.innerHTML = '';
+  const order = ['K', 'Q', 'R', 'B', 'N', 'P'];
+  for (const color of ['w', 'b']) {
+    for (const t of order) {
+      const btn = document.createElement('button');
+      btn.className = `paletteBtn ${color === 'w' ? 'white' : 'black'}`;
+      btn.textContent = GLYPHS[color][t];
+      btn.title = `${color === 'w' ? 'White' : 'Black'} ${NAMES[t]}`;
+      btn.dataset.color = color; btn.dataset.type = t;
+      btn.onclick = () => selectEditorTool({ type: t, color });
+      box.appendChild(btn);
+    }
+  }
+  const eraser = document.createElement('button');
+  eraser.className = 'paletteBtn eraser';
+  eraser.textContent = '⌫';
+  eraser.title = 'Erase square';
+  eraser.dataset.tool = 'eraser';
+  eraser.onclick = () => selectEditorTool(null);
+  box.appendChild(eraser);
+  selectEditorTool(editorTool);
+}
+
+function selectEditorTool(tool) {
+  editorTool = tool;
+  document.querySelectorAll('.paletteBtn').forEach(b => b.classList.remove('active'));
+  const btn = tool
+    ? document.querySelector(`.paletteBtn[data-color="${tool.color}"][data-type="${tool.type}"]`)
+    : document.querySelector('.paletteBtn[data-tool="eraser"]');
+  if (btn) btn.classList.add('active');
+}
+
+function loadSetupBasis(basis) {
+  if (basis === 'empty') editorBoard = Array.from({ length: 8 }, () => Array(8).fill(null));
+  else if (basis === 'chess960') editorBoard = chess960Board();
+  else editorBoard = standardBoard();
+  document.getElementById('setupWarning').textContent = '';
+  render();
+}
+
+function openSetup() {
+  if (document.getElementById('modalOverlay').classList.contains('open')) return;
+  gameId++; // invalidate any in-flight AI move callback
+  pauseClock();
+  setupMode = true;
+  document.getElementById('setupBasis').value = 'standard';
+  document.getElementById('setupSideToMove').value = 'w';
+  selectEditorTool({ type: 'K', color: 'w' });
+  loadSetupBasis('standard');
+  document.getElementById('gamePanel').classList.add('hidden');
+  document.getElementById('setupPanel').classList.remove('hidden');
+  render();
+}
+
+function closeSetup() {
+  setupMode = false;
+  document.getElementById('setupPanel').classList.add('hidden');
+  document.getElementById('gamePanel').classList.remove('hidden');
+  render();
+  if (!gameOver && getClockOn()) startClockFor(turn); else renderClocks();
+}
+
+function startSetupGame() {
+  let kingsW = 0, kingsB = 0;
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++) {
+      const p = editorBoard[r][c];
+      if (p && p.t === 'K') { if (p.c === 'w') kingsW++; else kingsB++; }
+    }
+  if (kingsW !== 1 || kingsB !== 1) {
+    document.getElementById('setupWarning').textContent = 'Board needs exactly one King for each color to start.';
+    return;
+  }
+  const startTurn = document.getElementById('setupSideToMove').value;
+  setupMode = false;
+  document.getElementById('setupPanel').classList.add('hidden');
+  document.getElementById('gamePanel').classList.remove('hidden');
+  initGame(editorBoard, startTurn);
+}
+
 // ---------- AI Engine ----------
 const DIFFICULTY = {
   easy:   { depth: 1, noise: 1.5, qDepth: 0 },  // shallow + very noisy: blunders happily
@@ -1194,6 +1710,7 @@ function pushHistory() {
     lastMove: lastMove ? JSON.parse(JSON.stringify(lastMove)) : null,
     moveNum, gameOver, halfmoveClock,
     captured: { w: captured.w, b: captured.b },
+    clockTime: { w: clockTime.w, b: clockTime.b },
     positionKeys: positionKeys.slice(),
     logHTML: document.getElementById('log').innerHTML
   });
@@ -1208,6 +1725,8 @@ function restoreSnapshot(s) {
   gameOver = s.gameOver;
   halfmoveClock = s.halfmoveClock;
   captured = { w: s.captured.w, b: s.captured.b };
+  clockTime = { w: s.clockTime.w, b: s.clockTime.b };
+  clockRunning = false;
   positionKeys = s.positionKeys.slice();
   document.getElementById('log').innerHTML = s.logHTML;
   selected = null;
@@ -1232,6 +1751,7 @@ function undo() {
   restoreSnapshot(snap);
   render();
   setTurnStatus();
+  if (!gameOver && getClockOn()) startClockFor(turn); else renderClocks();
   if (turn === getAIColor() && !gameOver) maybeAIMove(); // landed on AI's turn (only at game start)
 }
 
@@ -1240,6 +1760,60 @@ function refreshUndoBtn() {
   if (btn) btn.disabled = inputLocked || history.length === 0 ||
     document.getElementById('modalOverlay').classList.contains('open');
 }
+
+// ---------- Resign ----------
+function resign() {
+  if (gameOver) return;
+  if (document.getElementById('modalOverlay').classList.contains('open')) return;
+  const human = getHumanColor();
+  const resigningColor = human !== null ? human : turn; // vs AI: the human resigns; 2P: whoever's turn it is
+  const loser = resigningColor === 'w' ? 'White' : 'Black';
+  const winner = resigningColor === 'w' ? 'Black' : 'White';
+  if (!confirm(`${loser} resigns — are you sure?`)) return;
+
+  gameOver = true;
+  clockRunning = false;
+  inputLocked = true;
+  setStatus(`🏳 ${loser} resigned — ${winner} wins!`, 'gameover');
+  logEvo(`${loser} resigned. ${winner} wins.`);
+  showGameOverOverlay('🏳', 'Resignation', `${winner} wins`);
+  renderClocks();
+  render();
+}
+
+function refreshResignBtn() {
+  const btn = document.getElementById('resignBtn');
+  if (btn) btn.disabled = gameOver ||
+    document.getElementById('modalOverlay').classList.contains('open');
+}
+
+// ---------- Sound ----------
+let audioCtx = null;
+let lastTickSecond = { w: null, b: null };
+
+function ensureAudio() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    else if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (e) { /* no Web Audio support — sound is a nice-to-have, not required */ }
+}
+
+function beep(freq, durationMs, type, volume) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  const now = audioCtx.currentTime;
+  gain.gain.setValueAtTime(volume, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + durationMs / 1000);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(now);
+  osc.stop(now + durationMs / 1000);
+}
+
+const clockTickSound = () => beep(880, 90, 'square', 0.15);
+const flagSound = () => beep(180, 350, 'sawtooth', 0.25);
 
 function genAllPseudo(b, color, epSq) {
   const out = [];
@@ -1377,7 +1951,7 @@ function maybeAIMove() {
   const gen = gameId;
   setStatus(`${turn === 'w' ? 'White' : 'Black'} (AI) is thinking…`);
   setTimeout(() => {
-    if (gen !== gameId) return;
+    if (gen !== gameId || gameOver) return; // game may have ended (e.g. resignation) while the AI "thought"
     const m = chooseAIMove();
     inputLocked = false;
     if (m) playMove(m);
@@ -1399,10 +1973,74 @@ document.getElementById('gamble').addEventListener('change', () => {
   refreshRulesVisibility();
   if (history.length > 0) logEvo(`Gambling turned ${on ? 'ON' : 'OFF'}.`);
 });
+document.getElementById('clockToggle').addEventListener('change', () => {
+  const on = getClockOn();
+  if (on) ensureAudio();
+  refreshRulesVisibility();
+  if (on) { if (!gameOver) startClockFor(turn); }
+  else pauseClock();
+  renderClocks();
+  if (history.length > 0) logEvo(`Clock turned ${on ? 'ON' : 'OFF'}.`);
+});
 
-document.getElementById('newGameBtn').addEventListener('click', initGame);
-document.getElementById('overlayNewGameBtn').addEventListener('click', initGame);
+// ---------- Clock settings UI wiring ----------
+document.getElementById('clockPreset').addEventListener('change', e => {
+  const val = e.target.value;
+  if (val === 'custom') return;
+  const p = CLOCK_PRESETS[val];
+  document.getElementById('whiteTime').value = formatMMSS(p.time);
+  document.getElementById('blackTime').value = formatMMSS(p.time);
+  document.getElementById('whiteInc').value = p.inc;
+  document.getElementById('blackInc').value = p.inc;
+  document.getElementById('sameTime').checked = true;
+  document.getElementById('sameInc').checked = true;
+  document.getElementById('blackTime').disabled = true;
+  document.getElementById('blackInc').disabled = true;
+});
+for (const id of ['whiteTime', 'blackTime', 'whiteInc', 'blackInc'])
+  document.getElementById(id).addEventListener('input', () => { document.getElementById('clockPreset').value = 'custom'; });
+
+document.getElementById('sameTime').addEventListener('change', () => {
+  const same = document.getElementById('sameTime').checked;
+  document.getElementById('blackTime').disabled = same;
+  if (same) document.getElementById('blackTime').value = document.getElementById('whiteTime').value;
+});
+document.getElementById('whiteTime').addEventListener('input', () => {
+  if (document.getElementById('sameTime').checked) document.getElementById('blackTime').value = document.getElementById('whiteTime').value;
+});
+document.getElementById('sameInc').addEventListener('change', () => {
+  const same = document.getElementById('sameInc').checked;
+  document.getElementById('blackInc').disabled = same;
+  if (same) document.getElementById('blackInc').value = document.getElementById('whiteInc').value;
+});
+document.getElementById('whiteInc').addEventListener('input', () => {
+  if (document.getElementById('sameInc').checked) document.getElementById('blackInc').value = document.getElementById('whiteInc').value;
+});
+document.getElementById('incActivation').addEventListener('change', () => {
+  document.getElementById('incThresholdRow').style.display =
+    document.getElementById('incActivation').value === 'threshold' ? '' : 'none';
+});
+
+document.getElementById('newGameBtn').addEventListener('click', () => { ensureAudio(); initGame(); });
+document.getElementById('overlayNewGameBtn').addEventListener('click', () => { ensureAudio(); initGame(); });
 document.getElementById('undoBtn').addEventListener('click', undo);
+document.getElementById('resignBtn').addEventListener('click', resign);
+
+// ---------- Setup panel wiring ----------
+document.getElementById('setupBtn').addEventListener('click', () => { ensureAudio(); openSetup(); });
+document.getElementById('setupCancelBtn').addEventListener('click', closeSetup);
+document.getElementById('setupStartBtn').addEventListener('click', startSetupGame);
+document.getElementById('setupBasis').addEventListener('change', e => loadSetupBasis(e.target.value));
+document.getElementById('setupClearBtn').addEventListener('click', () => {
+  document.getElementById('setupBasis').value = 'empty';
+  loadSetupBasis('empty');
+});
+document.getElementById('setupRerollBtn').addEventListener('click', () => {
+  document.getElementById('setupBasis').value = 'chess960';
+  loadSetupBasis('chess960');
+});
+
+buildSetupPalette();
 initGame();
 </script>
 </body>
