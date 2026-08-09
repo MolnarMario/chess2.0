@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Chess 2.0 — RPG Evolution Chess</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
 <style>
   :root {
     --light: #f0d9b5;
@@ -245,11 +248,26 @@
   #status.check-warn { color: #ff8a8a; }
   #status.gameover { color: #ffd700; }
 
-  .rules h2 { font-size: 0.95em; margin: 12px 0 6px; color: #cdd; border-bottom: 1px solid #555; padding-bottom: 4px; }
+  .rules h2 {
+    font-size: 0.95em; margin: 12px 0 6px; color: #cdd; border-bottom: 1px solid #555; padding-bottom: 4px;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
   .rules ul { list-style: none; font-size: 0.83em; color: #bcc; }
   .rules li { padding: 3px 0; }
   .rules .glyph { font-size: 1.2em; margin-right: 4px; }
   .rules b { color: #8fd48f; }
+
+  /* Inline on/off switch, used next to feature headings (Evolution Paths, Gambling) */
+  .toggleSwitch { position: relative; display: inline-flex; align-items: center; width: 36px; height: 20px; flex-shrink: 0; }
+  .toggleSwitch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+  .toggleSlider { position: absolute; inset: 0; background: #555; border-radius: 20px; transition: background 0.2s ease; pointer-events: none; }
+  .toggleSlider::before {
+    content: ''; position: absolute; width: 14px; height: 14px; left: 3px; top: 3px;
+    background: #eee; border-radius: 50%; transition: transform 0.2s ease;
+  }
+  .toggleSwitch input:checked + .toggleSlider { background: #4a9a4a; }
+  .toggleSwitch input:checked + .toggleSlider::before { transform: translateX(16px); background: #fff; }
+  .toggleSwitch input:focus-visible + .toggleSlider { outline: 2px solid #5a82bd; outline-offset: 2px; }
 
   #log {
     margin-top: 14px;
@@ -327,7 +345,7 @@
   #clockSettings { margin-top: -2px; margin-bottom: 14px; }
   #clockSettings.hidden { display: none; }
 
-  #evolutionRules.hidden, #gamblingRules.hidden, #clockRulesInfo.hidden { display: none; }
+  #evolutionRulesBody.hidden, #gamblingRulesBody.hidden, #clockRulesInfo.hidden { display: none; }
 
   /* Board setup / editor */
   #gamePanel.hidden, #setupPanel.hidden { display: none; }
@@ -357,6 +375,19 @@
   .paletteBtn.active { border-color: #ffd700 !important; box-shadow: 0 0 8px rgba(255,215,0,0.6); }
   #setupWarning { color: #ff7a7a; font-size: 0.8em; min-height: 1.2em; text-align: center; margin: 2px 0 4px; }
   #setupPanel .btnRow button { font-size: 0.9em; }
+  .rerollGroup { flex: 1; display: flex; gap: 6px; margin-top: 0; }
+  .rerollGroup #setupRerollBtn { flex: 1; margin-top: 0; }
+  .infoIconBtn {
+    flex: 0 0 auto; width: 34px; margin-top: 0; padding: 0;
+    font-size: 1.05em; font-weight: 700; line-height: 1;
+    border-radius: 50%; background: #555;
+  }
+  .infoIconBtn:hover { background: #6a6a78; }
+  #chess960Info {
+    font-size: 0.78em; line-height: 1.45; color: #bcc;
+    background: #2d2d38; border-radius: 8px; padding: 8px 10px; margin: -4px 0 12px;
+  }
+  #chess960Info.hidden { display: none; }
   #setupPanel #setupStartBtn { background: #3a7a4a; }
   #setupPanel #setupStartBtn:hover { background: #4a944a; }
   #setupPanel #setupCancelBtn { background: #5a5a66; }
@@ -438,13 +469,367 @@
       background-position: right 12px center;
     }
   }
+
+  /* ================================================================
+     THEME SYSTEM — Classic (default, above, untouched) / Arcade / Swiss
+     Switched via body[data-theme="arcade"|"swiss"]. Everything below
+     is additive: it only fires when one of those attributes is set.
+     ================================================================ */
+
+  /* ---------- Wordmark (three variants, one shown per theme) ---------- */
+  #wordmarkArea { margin-bottom: 2px; }
+  .wordmark { display: none; }
+  body:not([data-theme="arcade"]):not([data-theme="swiss"]) .wm-classic { display: block; }
+  body[data-theme="arcade"] .wm-arcade {
+    display: block;
+    font-family: 'Press Start 2P', monospace;
+    font-size: min(24px, 6vw);
+    color: #ffe600;
+    text-shadow: 3px 3px 0 #ff2e88, 6px 6px 0 #00e5ff;
+    letter-spacing: 2px;
+    margin-bottom: 14px;
+  }
+  body[data-theme="swiss"] .wm-swiss {
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 16px;
+    width: 100%;
+  }
+  body[data-theme="swiss"] #wordmarkArea {
+    width: 100%;
+    border-bottom: 5px solid #000;
+    padding-bottom: 14px;
+  }
+  .swissWordmark {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: min(56px, 12vw); font-weight: 700; letter-spacing: -3px; line-height: 0.85;
+  }
+  .swissMeta {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    text-align: right; font-size: 10px; font-weight: 700;
+    letter-spacing: 1.2px; text-transform: uppercase; line-height: 1.8;
+    color: #000; white-space: nowrap;
+  }
+  #swissMetaGamble.on { color: #e2231a; }
+
+  /* ================= ARCADE ================= */
+  body[data-theme="arcade"] {
+    --light: #7b7bdb;
+    --dark: #2a2a6e;
+    --select: rgba(0, 229, 255, 0.4);
+    --last-move: rgba(255, 230, 0, 0.28);
+    --check: rgba(255, 46, 136, 0.55);
+    --bg: #08060f;
+    --panel: #08060f;
+    position: relative;
+  }
+  body[data-theme="arcade"]::after {
+    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9999;
+    background: repeating-linear-gradient(to bottom, rgba(0,0,0,0.28) 0 1px, transparent 1px 3px);
+  }
+  body[data-theme="arcade"] .sq { font-size: min(44px, 8.8cqw); }
+  body[data-theme="arcade"] .coord { display: none; }
+  body[data-theme="arcade"] #board { border: 4px solid #00e5ff; border-radius: 0; box-shadow: none; }
+  body[data-theme="arcade"] .sq.movetarget::after { width: 16px; height: 16px; border-radius: 0; }
+  body[data-theme="arcade"] .sq.capturetarget::after { inset: 3px; border-width: 3px; border-radius: 0; }
+  body[data-theme="arcade"] .piece { margin-bottom: 8px; }
+  body[data-theme="arcade"] .piece.white { color: #fff; text-shadow: 2px 2px 0 #0d0d2e; }
+  body[data-theme="arcade"] .piece.black { color: #0d0d2e; text-shadow: 2px 2px 0 rgba(255,255,255,0.35); }
+  body[data-theme="arcade"] .amazon-badge { filter: drop-shadow(0 0 3px #ffe600); }
+
+  /* XP meter — segmented bar under the glyph + LV tag */
+  body[data-theme="arcade"] .xpMeter {
+    position: absolute; left: 7px; right: 7px; bottom: 14px; height: 7px;
+    display: flex; gap: 2px; z-index: 3; pointer-events: none;
+  }
+  body[data-theme="arcade"] .xpMeter i { flex: 1; background: rgba(8,6,15,0.55); }
+  body[data-theme="arcade"] .xpMeter i.on { background: #ffe600; }
+  body[data-theme="arcade"] .xpMeter.close i.on { background: #ff2e88; }
+  body[data-theme="arcade"] .xpLevel {
+    position: absolute; left: 0; right: 0; bottom: 2px; text-align: center; z-index: 3;
+    font-family: 'Press Start 2P', monospace; font-size: 7px; color: #ffe600; pointer-events: none;
+  }
+  body[data-theme="arcade"] .xpLevel.close { color: #ff2e88; }
+  @container (max-width: 500px) {
+    body[data-theme="arcade"] .xpLevel { display: none; }
+  }
+
+  /* Chrome */
+  body[data-theme="arcade"] #sidePanel { border: 4px solid #2a2a6e; border-radius: 0; box-shadow: none; }
+  body[data-theme="arcade"] .capBar { border-radius: 0; }
+  body[data-theme="arcade"] .capSide { font-family: 'VT323', monospace; font-size: 1.3em; letter-spacing: 1px; color: #fff; }
+  body[data-theme="arcade"] #capBarTop .capSide { color: #ff2e88; }
+  body[data-theme="arcade"] #capBarBottom .capSide { color: #00e5ff; }
+  body[data-theme="arcade"] .capPts { font-family: 'VT323', monospace; font-size: 1.15em; color: #9d9dd6; }
+  body[data-theme="arcade"] .capPts b { color: #ffe600; font-family: 'VT323', monospace; }
+  body[data-theme="arcade"] .capLead { background: transparent; border-radius: 0; font-family: 'Press Start 2P', monospace; font-size: 0.6em; }
+  body[data-theme="arcade"] .capLead.w { color: #00e5ff; }
+  body[data-theme="arcade"] .capLead.b { color: #ff2e88; }
+  body[data-theme="arcade"] .clockDisplay { font-family: 'VT323', monospace; font-size: 1.3em; background: transparent; border-radius: 0; color: #fff; }
+  body[data-theme="arcade"] .clockDisplay.active { background: transparent; color: #ffe600; box-shadow: none; }
+  body[data-theme="arcade"] .clockDisplay.low { color: #ff2e88; }
+  body[data-theme="arcade"] #status {
+    background: #2a2a6e; border-radius: 0;
+    font-family: 'Press Start 2P', monospace; font-size: 0.6em; line-height: 1.6; color: #fff;
+  }
+  body[data-theme="arcade"] #status.check-warn { color: #ff2e88; }
+  body[data-theme="arcade"] #status.gameover { color: #ffe600; }
+  body[data-theme="arcade"] .rules h2 { font-family: 'Press Start 2P', monospace; font-size: 0.65em; letter-spacing: 1px; color: #00e5ff; border-bottom: none; }
+  body[data-theme="arcade"] .toggleSlider { background: #2a2a6e; border-radius: 0; }
+  body[data-theme="arcade"] .toggleSlider::before { border-radius: 0; background: #9d9dd6; }
+  body[data-theme="arcade"] .toggleSwitch input:checked + .toggleSlider { background: #00e5ff; }
+  body[data-theme="arcade"] .toggleSwitch input:checked + .toggleSlider::before { background: #08060f; }
+  body[data-theme="arcade"] .rules ul, body[data-theme="arcade"] .rules li { font-family: 'VT323', monospace; font-size: 1.15em; color: #9d9dd6; }
+  body[data-theme="arcade"] .rules b { color: #ffe600; }
+  body[data-theme="arcade"] #log { background: #2a2a6e; border-radius: 0; font-family: 'VT323', monospace; font-size: 1.15em; color: #9d9dd6; }
+  body[data-theme="arcade"] #log .evo { color: #ffe600; }
+
+  body[data-theme="arcade"] .controls label { font-family: 'VT323', monospace; font-size: 0.95em; color: #9d9dd6; }
+  body[data-theme="arcade"] .controls select, body[data-theme="arcade"] .controls input {
+    border: none; border-radius: 0; background-color: #2a2a6e; color: #ffe600;
+    font-family: 'VT323', monospace; font-size: 1.15rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' fill='none' stroke='%2300e5ff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+  body[data-theme="arcade"] .controls select:focus, body[data-theme="arcade"] .controls input:focus { outline: 2px solid #00e5ff; border-color: transparent; }
+
+  body[data-theme="arcade"] button {
+    border: none; border-radius: 0;
+    font-family: 'Press Start 2P', monospace; font-size: 0.6em;
+    background: #00e5ff; color: #08060f; box-shadow: 4px 4px 0 #0a5f6b;
+  }
+  body[data-theme="arcade"] button:hover { background: #6cf0ff; }
+  body[data-theme="arcade"] button:disabled { background: #2a2a6e; color: #5a5a8a; box-shadow: 4px 4px 0 #14143a; cursor: default; }
+  body[data-theme="arcade"] #undoBtn, body[data-theme="arcade"] #undoBtn:hover { background: #00e5ff; box-shadow: 4px 4px 0 #0a5f6b; }
+  body[data-theme="arcade"] #undoBtn:hover { background: #6cf0ff; }
+  body[data-theme="arcade"] #undoBtn:disabled, body[data-theme="arcade"] #resignBtn:disabled { background: #2a2a6e; color: #5a5a8a; box-shadow: 4px 4px 0 #14143a; }
+  body[data-theme="arcade"] #resignBtn, body[data-theme="arcade"] #newGameBtn, body[data-theme="arcade"] #setupClearBtn {
+    background: #ff2e88; box-shadow: 4px 4px 0 #7a1341;
+  }
+  body[data-theme="arcade"] #resignBtn:hover, body[data-theme="arcade"] #newGameBtn:hover, body[data-theme="arcade"] #setupClearBtn:hover { background: #ff67a9; }
+  body[data-theme="arcade"] #overlayNewGameBtn, body[data-theme="arcade"] #setupPanel #setupStartBtn {
+    background: #ffe600; box-shadow: 5px 5px 0 #7a6b00;
+  }
+  body[data-theme="arcade"] #overlayNewGameBtn:hover, body[data-theme="arcade"] #setupPanel #setupStartBtn:hover { background: #fff45c; }
+  body[data-theme="arcade"] #setupPanel #setupCancelBtn { background: #2a2a6e; box-shadow: 4px 4px 0 #14143a; }
+  body[data-theme="arcade"] #setupPanel #setupCancelBtn:hover { background: #3f3f9e; }
+
+  body[data-theme="arcade"] #setupPalette { background: #2a2a6e; border-radius: 0; }
+  body[data-theme="arcade"] .infoIconBtn { border-radius: 0; background: #2a2a6e; box-shadow: 4px 4px 0 #14143a; color: #ffe600; }
+  body[data-theme="arcade"] .infoIconBtn:hover { background: #3f3f9e; }
+  body[data-theme="arcade"] #chess960Info { background: #2a2a6e; border-radius: 0; font-family: 'VT323', monospace; font-size: 1em; color: #9d9dd6; }
+  body[data-theme="arcade"] .paletteBtn { border-radius: 0; }
+  body[data-theme="arcade"] .paletteBtn.active { border-color: #ffe600 !important; box-shadow: 0 0 8px rgba(255,230,0,0.6); }
+  body[data-theme="arcade"] #setupPanel h2 { font-family: 'Press Start 2P', monospace; font-size: 0.7em; color: #ffe600; }
+
+  /* Modals */
+  body[data-theme="arcade"] #modalOverlay { background: rgba(8,6,15,0.82); }
+  body[data-theme="arcade"] #modal { border-radius: 0; box-shadow: none; border: 4px solid #2a2a6e; position: relative; overflow: hidden; }
+  body[data-theme="arcade"] #modal[data-mood="gamble"] { border-color: #2a2a6e; }
+  body[data-theme="arcade"] #modal[data-mood="roll"] { border-color: #ff2e88; }
+  body[data-theme="arcade"] #modal[data-mood="evolve"] { border-color: #ffe600; }
+  body[data-theme="arcade"] #modal h3 { font-family: 'Press Start 2P', monospace; font-size: 1em; line-height: 1.5; color: #ffe600; text-shadow: 3px 3px 0 #ff2e88; }
+  body[data-theme="arcade"] .choiceBtn { border-radius: 0; border: 4px solid #00e5ff; background: #2a2a6e; color: #fff; box-shadow: 5px 5px 0 #0a5f6b; }
+  body[data-theme="arcade"] .choiceBtn:hover { background: #3f3f9e; border-color: #00e5ff; }
+  body[data-theme="arcade"] .gambleBtn { border-radius: 0; border: none; background: #00e5ff; color: #08060f; font-family: 'Press Start 2P', monospace; font-size: 0.55em; line-height: 1.7; box-shadow: 5px 5px 0 #0a5f6b; }
+  body[data-theme="arcade"] .gambleBtn span { color: #08060f; font-size: 0.8em; }
+  body[data-theme="arcade"] .gambleBtn.risk { background: #ffe600; box-shadow: 5px 5px 0 #7a6b00; }
+  body[data-theme="arcade"] .gambleBtn.risk:hover { background: #fff45c; }
+  body[data-theme="arcade"] .gambleBtn.risk span { color: #08060f; }
+  body[data-theme="arcade"] .gambleBtn.safe:hover { background: #6cf0ff; }
+  body[data-theme="arcade"] .rollResult { font-family: 'Press Start 2P', monospace; font-size: 1em; text-shadow: none; }
+  body[data-theme="arcade"] .rollResult.win { color: #ffe600; text-shadow: 4px 4px 0 #ff2e88, 8px 8px 0 #00e5ff; }
+  body[data-theme="arcade"] .rollResult.lose { color: #ff2e88; text-shadow: 3px 3px 0 #7a1341; }
+
+  body[data-theme="arcade"] #gameOverOverlay { background: rgba(8,6,15,0.9); border-radius: 0; }
+  body[data-theme="arcade"] #gameOverIcon { filter: drop-shadow(0 0 14px #ffe600); }
+  body[data-theme="arcade"] #gameOverTitle {
+    font-family: 'Press Start 2P', monospace; color: #ffe600;
+    text-shadow: 3px 3px 0 #ff2e88, 6px 6px 0 #00e5ff;
+  }
+  body[data-theme="arcade"] #gameOverSubtitle { font-family: 'VT323', monospace; font-size: 1.5em; color: #fff; }
+
+  /* ================= SWISS ================= */
+  body[data-theme="swiss"] {
+    --light: #ffffff;
+    --dark: #dcdcdc;
+    --select: rgba(226, 35, 26, 0.28);
+    --last-move: rgba(226, 35, 26, 0.14);
+    --check: rgba(226, 35, 26, 0.5);
+    --bg: #ffffff;
+    --panel: #ffffff;
+    color: #000;
+  }
+  body[data-theme="swiss"] .coord { color: rgba(0,0,0,0.4); }
+  body[data-theme="swiss"] #board {
+    border: 1px solid #000; border-radius: 0; box-shadow: none;
+    gap: 1px; background: #000;
+  }
+  body[data-theme="swiss"] .sq.movetarget::after { width: 14px; height: 14px; border-radius: 0; }
+  body[data-theme="swiss"] .sq.capturetarget::after { inset: 0; border-width: 4px; border-radius: 0; }
+  body[data-theme="swiss"] .piece.white { color: #e2231a; text-shadow: none; }
+  body[data-theme="swiss"] .piece.black { color: #000; text-shadow: none; }
+  body[data-theme="swiss"] .amazon-badge { filter: none; }
+
+  /* XP meter — vertical bar on the left edge + banked-point numeral */
+  body[data-theme="swiss"] .xpMeter {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 9px;
+    display: flex; flex-direction: column-reverse; gap: 1px; z-index: 3; pointer-events: none;
+  }
+  body[data-theme="swiss"] .xpMeter i { flex: 1; background: rgba(0,0,0,0.16); }
+  body[data-theme="swiss"] .xpMeter i.on { background: #e2231a; }
+  body[data-theme="swiss"] .xpCount {
+    position: absolute; top: 3px; right: 5px; z-index: 3;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 11px; font-weight: 700; color: #e2231a;
+    font-variant-numeric: tabular-nums; pointer-events: none;
+  }
+  @container (max-width: 500px) {
+    body[data-theme="swiss"] .xpCount { display: none; }
+  }
+
+  /* Chrome */
+  body[data-theme="swiss"] #sidePanel { border: none; border-radius: 0; box-shadow: none; padding: 0; }
+  body[data-theme="swiss"] .capBar { background: transparent; border-radius: 0; padding: 6px 0; }
+  body[data-theme="swiss"] .capSide {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #000;
+  }
+  body[data-theme="swiss"] .capPts, body[data-theme="swiss"] .capPts b {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #000; font-variant-numeric: tabular-nums;
+  }
+  body[data-theme="swiss"] .capLead { background: transparent; border-radius: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+  body[data-theme="swiss"] .capLead.w, body[data-theme="swiss"] .capLead.b { color: #e2231a; }
+  body[data-theme="swiss"] .clockDisplay {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 22px; font-weight: 700; background: transparent; border-radius: 0; color: #000;
+    font-variant-numeric: tabular-nums;
+  }
+  body[data-theme="swiss"] .clockDisplay.active { background: transparent; color: #e2231a; box-shadow: none; }
+  body[data-theme="swiss"] .clockDisplay.low { color: #e2231a; }
+  body[data-theme="swiss"] #status {
+    background: transparent; border-radius: 0; padding: 0 0 14px;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-weight: 700; font-size: 14px;
+    letter-spacing: 0.5px; text-transform: uppercase; color: #000; justify-content: flex-start; text-align: left;
+  }
+  body[data-theme="swiss"] #status.check-warn, body[data-theme="swiss"] #status.gameover { color: #e2231a; }
+  body[data-theme="swiss"] .rules h2 {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; font-weight: 700;
+    letter-spacing: 1.5px; text-transform: uppercase; border-bottom: none; color: #000;
+  }
+  body[data-theme="swiss"] .toggleSlider { background: #dcdcdc; border-radius: 0; }
+  body[data-theme="swiss"] .toggleSlider::before { border-radius: 0; background: #fff; border: 1px solid #000; }
+  body[data-theme="swiss"] .toggleSwitch input:checked + .toggleSlider { background: #e2231a; }
+  body[data-theme="swiss"] .toggleSwitch input:checked + .toggleSlider::before { background: #fff; border-color: #e2231a; }
+  body[data-theme="swiss"] .rules ul, body[data-theme="swiss"] .rules li {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 14px; font-weight: 500; color: #000;
+  }
+  body[data-theme="swiss"] .rules b { color: #e2231a; }
+  body[data-theme="swiss"] #log {
+    background: transparent; border-radius: 0; padding: 8px 0;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 14px; color: #000;
+    font-variant-numeric: tabular-nums;
+  }
+  body[data-theme="swiss"] #log .evo { color: #e2231a; }
+
+  body[data-theme="swiss"] .controls label {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; font-weight: 700;
+    letter-spacing: 1.5px; text-transform: uppercase; color: #000;
+  }
+  body[data-theme="swiss"] .controls select, body[data-theme="swiss"] .controls input {
+    border: 1px solid #000; border-radius: 0; background-color: #fff; color: #000;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 0.85rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+  body[data-theme="swiss"] .controls select:focus, body[data-theme="swiss"] .controls input:focus { outline: 1px solid #e2231a; border-color: #e2231a; }
+
+  body[data-theme="swiss"] .btnRow { gap: 1px; }
+  body[data-theme="swiss"] button {
+    border: none; border-radius: 0;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; font-weight: 700;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    background: #000; color: #fff;
+  }
+  body[data-theme="swiss"] button:hover { background: #333; }
+  body[data-theme="swiss"] button:disabled { background: #dcdcdc; color: #8a8a8a; cursor: default; }
+  body[data-theme="swiss"] #undoBtn { background: #000; }
+  body[data-theme="swiss"] #undoBtn:hover { background: #333; }
+  body[data-theme="swiss"] #undoBtn:disabled, body[data-theme="swiss"] #resignBtn:disabled { background: #dcdcdc; color: #8a8a8a; }
+  body[data-theme="swiss"] #resignBtn, body[data-theme="swiss"] #newGameBtn, body[data-theme="swiss"] #setupClearBtn,
+  body[data-theme="swiss"] #overlayNewGameBtn, body[data-theme="swiss"] #setupPanel #setupStartBtn {
+    background: #e2231a;
+  }
+  body[data-theme="swiss"] #resignBtn:hover, body[data-theme="swiss"] #newGameBtn:hover, body[data-theme="swiss"] #setupClearBtn:hover,
+  body[data-theme="swiss"] #overlayNewGameBtn:hover, body[data-theme="swiss"] #setupPanel #setupStartBtn:hover {
+    background: #f5443b;
+  }
+  body[data-theme="swiss"] #setupPanel #setupCancelBtn { background: #000; }
+  body[data-theme="swiss"] #setupPanel #setupCancelBtn:hover { background: #333; }
+
+  body[data-theme="swiss"] #setupPalette { background: transparent; border: 1px solid #000; border-radius: 0; }
+  body[data-theme="swiss"] .infoIconBtn { border-radius: 50%; background: #000; color: #fff; }
+  body[data-theme="swiss"] .infoIconBtn:hover { background: #333; }
+  body[data-theme="swiss"] #chess960Info { background: transparent; border: 1px solid #000; border-radius: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 13px; color: #000; }
+  body[data-theme="swiss"] .paletteBtn { border-radius: 0; }
+  body[data-theme="swiss"] .paletteBtn.white { background: #fff; color: #e2231a; border-color: #000; }
+  body[data-theme="swiss"] .paletteBtn.black { background: #000; color: #fff; border-color: #000; }
+  body[data-theme="swiss"] .paletteBtn.active { border-color: #e2231a !important; box-shadow: none; }
+  body[data-theme="swiss"] #setupPanel h2 {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; font-weight: 700;
+    letter-spacing: 1.5px; text-transform: uppercase; color: #000;
+  }
+
+  /* Modals */
+  body[data-theme="swiss"] #modalOverlay { background: rgba(0,0,0,0.4); }
+  body[data-theme="swiss"] #modal { border-radius: 0; box-shadow: none; border: 1px solid #000; padding: 32px; }
+  body[data-theme="swiss"] #modal h3 {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; font-weight: 700;
+    letter-spacing: 1.5px; text-transform: uppercase; color: #000;
+  }
+  body[data-theme="swiss"] .choiceBtn { border-radius: 0; border: 1px solid #000; background: #fff; color: #000; }
+  body[data-theme="swiss"] .choiceBtn:hover { border-color: #e2231a; background: #f5f5f5; }
+  body[data-theme="swiss"] .gambleBtn {
+    border-radius: 0; border: 1px solid #000; background: #fff; color: #000;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 1.1em;
+  }
+  body[data-theme="swiss"] .gambleBtn span { color: #000; }
+  body[data-theme="swiss"] .gambleBtn.risk:hover { border-color: #e2231a; background: #fff5f4; }
+  body[data-theme="swiss"] .gambleBtn.risk:hover span { color: #e2231a; }
+  body[data-theme="swiss"] .gambleBtn.safe:hover { border-color: #000; background: #f5f5f5; }
+  body[data-theme="swiss"] .gambleBtn.safe:hover span { color: #000; }
+  body[data-theme="swiss"] .rollResult { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+  body[data-theme="swiss"] .rollResult.win { color: #e2231a; text-shadow: none; }
+  body[data-theme="swiss"] .rollResult.lose { color: #000; text-shadow: none; }
+
+  body[data-theme="swiss"] #gameOverOverlay { background: rgba(255,255,255,0.95); border-radius: 0; backdrop-filter: none; }
+  body[data-theme="swiss"] #gameOverIcon { filter: none; }
+  body[data-theme="swiss"] #gameOverTitle {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-weight: 700; color: #000; text-shadow: none;
+  }
+  body[data-theme="swiss"] #gameOverSubtitle {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-weight: 700; color: #e2231a;
+  }
+
+  @media (max-width: 700px) {
+    body[data-theme="swiss"] .swissWordmark { font-size: min(40px, 13vw); }
+  }
 </style>
 </head>
 <body>
 
 <div id="boardWrap">
-  <h1>♟ CHESS 2.0 <span style="color:#ffd700">RPG</span></h1>
-  <div class="subtitle">Capture to evolve. The King watches, unchanged.</div>
+  <div id="wordmarkArea">
+    <div class="wordmark wm-classic">
+      <h1>♟ CHESS 2.0 <span style="color:#ffd700">RPG</span></h1>
+      <div class="subtitle">Capture to evolve. The King watches, unchanged.</div>
+    </div>
+    <div class="wordmark wm-arcade">CHESS 2.0</div>
+    <div class="wordmark wm-swiss">
+      <span class="swissWordmark">Chess<br>2.0</span>
+      <div class="swissMeta">
+        <div>Evolution variant</div>
+        <div id="swissMetaMode">vs Computer · Medium</div>
+        <div id="swissMetaGamble" class="on">Gambling active</div>
+      </div>
+    </div>
+  </div>
 
   <div class="capBar" id="capBarTop">
     <span class="capSide">♚ Black</span>
@@ -492,22 +877,17 @@
         <option value="b">Black</option>
       </select>
     </label>
-    <label>Evolution
-      <select id="evolution">
-        <option value="on" selected>On</option>
-        <option value="off">Off</option>
-      </select>
-    </label>
-    <label>Gamble
-      <select id="gamble">
-        <option value="on" selected>On</option>
-        <option value="off">Off</option>
-      </select>
-    </label>
     <label>Clock
       <select id="clockToggle">
         <option value="off" selected>Off</option>
         <option value="on">On</option>
+      </select>
+    </label>
+    <label class="full">Theme
+      <select id="themeSelect">
+        <option value="classic" selected>Classic</option>
+        <option value="arcade">Arcade</option>
+        <option value="swiss">Swiss</option>
       </select>
     </label>
   </div>
@@ -578,7 +958,8 @@
       </label>
       <label class="full">Side to Move First
         <select id="setupSideToMove">
-          <option value="w" selected>White</option>
+          <option value="" selected disabled>Choose…</option>
+          <option value="w">White</option>
           <option value="b">Black</option>
         </select>
       </label>
@@ -586,7 +967,15 @@
     <div id="setupPalette"></div>
     <div class="btnRow">
       <button id="setupClearBtn">🗑 Clear Board</button>
-      <button id="setupRerollBtn">🎲 Reroll 960</button>
+      <span class="rerollGroup">
+        <button id="setupRerollBtn">Random Fischer 960</button>
+        <button type="button" id="chess960InfoBtn" class="infoIconBtn" aria-label="What is Fischer Random (Chess960)?">ⓘ</button>
+      </span>
+    </div>
+    <div id="chess960Info" class="infoBox hidden">
+      Fischer Random Chess (Chess960) shuffles the back-rank pieces into one of 960 legal starting setups —
+      bishops always land on opposite-colored squares and the king always starts between the two rooks, so
+      castling still works. It removes memorized opening theory since every game starts from a fresh position.
     </div>
     <div id="setupWarning"></div>
     <div class="btnRow">
@@ -604,8 +993,14 @@
         <li><span class="glyph">♙</span>Pawn = <b>1</b> &nbsp;&nbsp; <span class="glyph">♘</span>♗ = <b>3</b> &nbsp;&nbsp; <span class="glyph">♖</span>= <b>5</b> &nbsp;&nbsp; <span class="glyph">♕</span>= <b>10</b></li>
       </ul>
       <div id="evolutionRules">
-        <h2>Evolution Paths</h2>
-        <ul>
+        <h2>
+          Evolution Paths
+          <label class="toggleSwitch">
+            <input type="checkbox" id="evolutionToggle" checked aria-label="Toggle Evolution">
+            <span class="toggleSlider"></span>
+          </label>
+        </h2>
+        <ul id="evolutionRulesBody">
           <li><span class="glyph">♙</span>Pawn <b>2 pts</b> → Knight or Bishop (your choice)</li>
           <li><span class="glyph">♘</span>Knight / ♗ Bishop <b>6 pts</b> → Rook</li>
           <li><span class="glyph">♖</span>Rook <b>10 pts</b> → Queen</li>
@@ -615,8 +1010,14 @@
         </ul>
       </div>
       <div id="gamblingRules">
-        <h2>🎲 Gambling</h2>
-        <ul>
+        <h2>
+          🎲 Gambling
+          <label class="toggleSwitch">
+            <input type="checkbox" id="gambleToggle" checked aria-label="Toggle Gambling">
+            <span class="toggleSlider"></span>
+          </label>
+        </h2>
+        <ul id="gamblingRulesBody">
           <li>Toggle <b>Gamble</b> any time — it applies from your next capture.</li>
           <li>When on, any capture lets you <b>gamble</b>: a 50/50 roll.</li>
           <li>Win → <b>double</b> the points. Lose → your capturing piece is <b style="color:#ff7a7a">destroyed</b> for nothing.</li>
@@ -684,6 +1085,35 @@ let clockIntervalId = null;
 let setupMode = false;
 let editorBoard = null;
 let editorTool = { type: 'K', color: 'w' }; // null = eraser
+
+// ---------- Theme ----------
+const EVO_STAGE = { P: 1, N: 2, B: 2, R: 3, Q: 4 }; // Arcade LV tag: evolution stage, 1-based
+let modalKeyMap = null; // active modal's keyboard shortcuts, e.g. { g: fn, t: fn, Escape: fn }
+
+function getTheme() {
+  return document.body.dataset.theme || 'classic';
+}
+
+function updateSwissMeta() {
+  const modeEl = document.getElementById('swissMetaMode');
+  const gambleEl = document.getElementById('swissMetaGamble');
+  if (!modeEl || !gambleEl) return;
+  const modeSel = document.getElementById('mode').value;
+  const diff = document.getElementById('difficulty').value;
+  modeEl.textContent = modeSel === 'ai'
+    ? `vs Computer · ${diff.charAt(0).toUpperCase()}${diff.slice(1)}`
+    : 'Two players';
+  const gambleOn = getGambleOn();
+  gambleEl.textContent = gambleOn ? 'Gambling active' : 'Gambling off';
+  gambleEl.classList.toggle('on', gambleOn);
+}
+
+function setTheme(theme, doRender) {
+  document.body.dataset.theme = theme;
+  try { localStorage.setItem('chess2Theme', theme); } catch (e) { /* private browsing / storage disabled */ }
+  updateSwissMeta();
+  if (doRender) render();
+}
 
 const GAMBLE_WIN = 0.5; // probability a gamble pays off
 
@@ -1103,6 +1533,8 @@ function allLegalMoves(b, color, epSq) {
 function askChoice(title, options, color, cb) {
   const overlay = document.getElementById('modalOverlay');
   const gen = gameId;
+  document.getElementById('modal').dataset.mood = 'evolve';
+  modalKeyMap = null; // no safe default to bind Esc to — the player must pick a form
   document.getElementById('modalTitle').textContent = title;
   const box = document.getElementById('modalChoices');
   box.innerHTML = '';
@@ -1120,6 +1552,7 @@ function askChoice(title, options, color, cb) {
 function askGamble(p, capturedPiece, base, onGamble, onTake) {
   const overlay = document.getElementById('modalOverlay');
   const gen = gameId;
+  document.getElementById('modal').dataset.mood = 'gamble';
   document.getElementById('modalTitle').textContent = `Captured ${NAMES[capturedPiece.t]}!  (+${base} pts)`;
   const box = document.getElementById('modalChoices');
   box.innerHTML = '';
@@ -1127,22 +1560,26 @@ function askGamble(p, capturedPiece, base, onGamble, onTake) {
   const gamble = document.createElement('button');
   gamble.className = 'gambleBtn risk';
   gamble.innerHTML = `🎲<span>Gamble (50%)<br>+${base * 2} or lose your ${NAMES[p.t]}</span>`;
-  gamble.onclick = () => { overlay.classList.remove('open'); if (gen === gameId) onGamble(); };
+  gamble.onclick = () => { overlay.classList.remove('open'); modalKeyMap = null; if (gen === gameId) onGamble(); };
 
   const take = document.createElement('button');
   take.className = 'gambleBtn safe';
   take.innerHTML = `✔<span>Take points<br>+${base} pts, keep ${NAMES[p.t]}</span>`;
-  take.onclick = () => { overlay.classList.remove('open'); if (gen === gameId) onTake(); };
+  take.onclick = () => { overlay.classList.remove('open'); modalKeyMap = null; if (gen === gameId) onTake(); };
 
   box.appendChild(gamble);
   box.appendChild(take);
   overlay.classList.add('open');
+  // g = gamble, t = take, Esc = take (the only choice with a safe, known outcome)
+  modalKeyMap = { g: () => gamble.click(), t: () => take.click(), Escape: () => take.click() };
 }
 
 // auto-dismissing dice-roll result splash
 function flashResult(win, text, cb) {
   const overlay = document.getElementById('modalOverlay');
   const gen = gameId;
+  document.getElementById('modal').dataset.mood = 'roll';
+  modalKeyMap = null; // auto-dismisses on its own; no player input to bind
   document.getElementById('modalTitle').textContent = win ? 'Lucky roll!' : 'Snake eyes…';
   document.getElementById('modalChoices').innerHTML =
     `<div class="rollResult ${win ? 'win' : 'lose'}">${text}</div>`;
@@ -1401,8 +1838,8 @@ function hideGameOverOverlay() {
 }
 
 function refreshRulesVisibility() {
-  document.getElementById('evolutionRules').classList.toggle('hidden', !getEvolutionOn());
-  document.getElementById('gamblingRules').classList.toggle('hidden', !getGambleOn());
+  document.getElementById('evolutionRulesBody').classList.toggle('hidden', !getEvolutionOn());
+  document.getElementById('gamblingRulesBody').classList.toggle('hidden', !getGambleOn());
   document.getElementById('clockRulesInfo').classList.toggle('hidden', !getClockOn());
   document.getElementById('clockSettings').classList.toggle('hidden', !getClockOn());
 }
@@ -1468,18 +1905,48 @@ function render() {
         span.textContent = GLYPHS[p.c][p.t];
         sq.appendChild(span);
 
-        // evolution counter — top right of the square (hidden while Evolution is off)
+        // evolution indicator (hidden while Evolution is off)
         if (p.t !== 'K' && getEvolutionOn()) {
-          const ctr = document.createElement('span');
-          if (p.t === 'Q' && p.amazon) {
-            ctr.className = 'counter max';
-            ctr.textContent = 'MAX';
-          } else {
+          const theme = getTheme();
+          if (theme === 'classic') {
+            // text pill, top-right — always shown (even at 0 pts), as before
+            const ctr = document.createElement('span');
+            if (p.t === 'Q' && p.amazon) {
+              ctr.className = 'counter max';
+              ctr.textContent = 'MAX';
+            } else {
+              const need = THRESH[p.t];
+              ctr.className = 'counter' + (p.pts >= need - 1 && p.pts > 0 ? ' close' : '');
+              ctr.textContent = `${p.pts}/${need}`;
+            }
+            sq.appendChild(ctr);
+          } else if (!(p.t === 'Q' && p.amazon) && p.pts > 0) {
+            // segmented meter — only drawn once a piece has banked points; an
+            // Amazon shows no meter (it can't evolve further), just its star badge
             const need = THRESH[p.t];
-            ctr.className = 'counter' + (p.pts >= need - 1 && p.pts > 0 ? ' close' : '');
-            ctr.textContent = `${p.pts}/${need}`;
+            const segCount = Math.min(need, 10);
+            const filled = Math.round(p.pts / need * segCount);
+            const close = p.pts >= need - 1;
+            const meter = document.createElement('span');
+            meter.className = 'xpMeter' + (close ? ' close' : '');
+            for (let i = 0; i < segCount; i++) {
+              const seg = document.createElement('i');
+              if (i < filled) seg.className = 'on';
+              meter.appendChild(seg);
+            }
+            sq.appendChild(meter);
+            if (theme === 'arcade') {
+              const lv = document.createElement('span');
+              lv.className = 'xpLevel' + (close ? ' close' : '');
+              lv.textContent = `LV${EVO_STAGE[p.t]}`;
+              sq.appendChild(lv);
+            } else if (theme === 'swiss') {
+              const count = document.createElement('span');
+              count.className = 'xpCount';
+              count.textContent = p.pts;
+              sq.appendChild(count);
+            }
           }
-          sq.appendChild(ctr);
         }
         if (p.amazon) {
           const badge = document.createElement('span');
@@ -1516,8 +1983,9 @@ function materialOf(color) {
 }
 
 function updateScoreboard() {
-  document.getElementById('capW').textContent = captured.w;
-  document.getElementById('capB').textContent = captured.b;
+  const arcade = getTheme() === 'arcade';
+  document.getElementById('capW').textContent = arcade ? String(captured.w).padStart(6, '0') : captured.w;
+  document.getElementById('capB').textContent = arcade ? String(captured.b).padStart(6, '0') : captured.b;
   const diff = materialOf('w') - materialOf('b');
   const leadW = document.getElementById('leadW');
   const leadB = document.getElementById('leadB');
@@ -1588,7 +2056,23 @@ function renderSetupBoard() {
 }
 
 function onSetupSquareClick(r, c) {
-  editorBoard[r][c] = editorTool ? newPiece(editorTool.type, editorTool.color) : null;
+  const existing = editorBoard[r][c];
+  if (!editorTool) {
+    editorBoard[r][c] = null;
+  } else if (existing && existing.t === editorTool.type && existing.c === editorTool.color) {
+    // clicking a square that already holds this exact piece empties it instead of re-placing it
+    editorBoard[r][c] = null;
+  } else {
+    if (editorTool.type === 'K') {
+      // a side can only have one King — placing a new one retires its old square
+      for (let rr = 0; rr < 8; rr++)
+        for (let cc = 0; cc < 8; cc++) {
+          const p = editorBoard[rr][cc];
+          if (p && p.t === 'K' && p.c === editorTool.color) editorBoard[rr][cc] = null;
+        }
+    }
+    editorBoard[r][c] = newPiece(editorTool.type, editorTool.color);
+  }
   document.getElementById('setupWarning').textContent = '';
   render();
 }
@@ -1641,7 +2125,8 @@ function openSetup() {
   pauseClock();
   setupMode = true;
   document.getElementById('setupBasis').value = 'standard';
-  document.getElementById('setupSideToMove').value = 'w';
+  document.getElementById('setupSideToMove').value = '';
+  document.getElementById('chess960Info').classList.add('hidden');
   selectEditorTool({ type: 'K', color: 'w' });
   loadSetupBasis('standard');
   document.getElementById('gamePanel').classList.add('hidden');
@@ -1669,6 +2154,10 @@ function startSetupGame() {
     return;
   }
   const startTurn = document.getElementById('setupSideToMove').value;
+  if (startTurn !== 'w' && startTurn !== 'b') {
+    document.getElementById('setupWarning').textContent = 'Choose who moves first.';
+    return;
+  }
   setupMode = false;
   document.getElementById('setupPanel').classList.add('hidden');
   document.getElementById('gamePanel').classList.remove('hidden');
@@ -1694,11 +2183,11 @@ function getHumanColor() {
 }
 
 function getGambleOn() {
-  return document.getElementById('gamble').value === 'on'; // togglable mid-game
+  return document.getElementById('gambleToggle').checked; // togglable mid-game
 }
 
 function getEvolutionOn() {
-  return document.getElementById('evolution').value === 'on'; // togglable mid-game
+  return document.getElementById('evolutionToggle').checked; // togglable mid-game
 }
 
 // ---------- Undo ----------
@@ -1733,12 +2222,14 @@ function restoreSnapshot(s) {
   legalCache = [];
   inputLocked = false;
   document.getElementById('modalOverlay').classList.remove('open');
+  modalKeyMap = null;
   if (!gameOver) hideGameOverOverlay();
 }
 
 function undo() {
   if (inputLocked || !history.length) return;
   if (document.getElementById('modalOverlay').classList.contains('open')) return;
+  gameId++; // invalidate any in-flight AI move callback — it would otherwise fire post-undo and move the wrong side
 
   const human = getHumanColor();
   let snap;
@@ -1959,18 +2450,19 @@ function maybeAIMove() {
 }
 
 for (const id of ['mode', 'playAs', 'difficulty'])
-  document.getElementById(id).addEventListener('change', maybeAIMove);
+  document.getElementById(id).addEventListener('change', () => { updateSwissMeta(); maybeAIMove(); });
 
 // Evolution and Gambling are togglable live, at any point in the game.
-document.getElementById('evolution').addEventListener('change', () => {
-  const on = document.getElementById('evolution').value === 'on';
+document.getElementById('evolutionToggle').addEventListener('change', () => {
+  const on = document.getElementById('evolutionToggle').checked;
   refreshRulesVisibility();
   render();
   if (history.length > 0) logEvo(`Evolution turned ${on ? 'ON' : 'OFF'}.`);
 });
-document.getElementById('gamble').addEventListener('change', () => {
-  const on = document.getElementById('gamble').value === 'on';
+document.getElementById('gambleToggle').addEventListener('change', () => {
+  const on = document.getElementById('gambleToggle').checked;
   refreshRulesVisibility();
+  updateSwissMeta();
   if (history.length > 0) logEvo(`Gambling turned ${on ? 'ON' : 'OFF'}.`);
 });
 document.getElementById('clockToggle').addEventListener('change', () => {
@@ -2038,6 +2530,40 @@ document.getElementById('setupClearBtn').addEventListener('click', () => {
 document.getElementById('setupRerollBtn').addEventListener('click', () => {
   document.getElementById('setupBasis').value = 'chess960';
   loadSetupBasis('chess960');
+});
+document.getElementById('chess960InfoBtn').addEventListener('click', () => {
+  document.getElementById('chess960Info').classList.toggle('hidden');
+});
+
+// ---------- Theme wiring ----------
+document.getElementById('themeSelect').addEventListener('change', e => { setTheme(e.target.value, true); });
+(function initTheme() {
+  let saved = 'classic';
+  try { saved = localStorage.getItem('chess2Theme') || 'classic'; } catch (e) { /* private browsing / storage disabled */ }
+  if (!['classic', 'arcade', 'swiss'].includes(saved)) saved = 'classic';
+  document.getElementById('themeSelect').value = saved;
+  setTheme(saved, false); // first real render happens via initGame() below
+})();
+
+// ---------- Keyboard shortcuts ----------
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+
+  if (document.getElementById('modalOverlay').classList.contains('open')) {
+    if (!modalKeyMap) return;
+    const key = e.key === 'Escape' ? 'Escape' : e.key.toLowerCase();
+    const fn = modalKeyMap[key];
+    if (fn) { e.preventDefault(); fn(); }
+    return;
+  }
+
+  if (setupMode) return;
+  const key = e.key.toLowerCase();
+  if (key === 'u') { e.preventDefault(); undo(); }
+  else if (key === 'n') { e.preventDefault(); ensureAudio(); initGame(); }
+  else if (key === 'r') { e.preventDefault(); resign(); }
 });
 
 buildSetupPalette();
