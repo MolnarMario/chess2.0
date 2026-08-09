@@ -394,15 +394,15 @@
   #setupPanel #setupCancelBtn:hover { background: #6a6a78; }
 
   /* Modal for evolution / promotion choices */
-  #modalOverlay {
+  #modalOverlay, #onlineOverlay {
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.6);
     display: none;
     align-items: center; justify-content: center;
     z-index: 100;
   }
-  #modalOverlay.open { display: flex; }
-  #modal {
+  #modalOverlay.open, #onlineOverlay.open { display: flex; }
+  #modal, #onlineModal {
     background: var(--panel);
     border-radius: 12px;
     padding: 24px 30px;
@@ -410,7 +410,46 @@
     box-shadow: 0 10px 50px rgba(0,0,0,0.7);
     border: 2px solid #ffd700;
   }
-  #modal h3 { margin-bottom: 16px; color: #ffd700; }
+  #modal h3, #onlineModal h3 { margin-bottom: 16px; color: #ffd700; }
+
+  /* Online PvP modal (host/join) */
+  #onlineModal { width: min(360px, 90vw); position: relative; }
+  #onlineModal .closeX {
+    position: absolute; top: 10px; right: 10px;
+    width: 26px; height: 26px; margin: 0; padding: 0;
+    font-size: 0.9em; line-height: 1; border-radius: 50%;
+    background: #2d2d38; color: #bcc;
+  }
+  #onlineModal .closeX:hover { background: #3d3d4d; color: #fff; }
+  .onlineTabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .onlineTabBtn { margin-top: 0; background: #2d2d38; color: #aab; }
+  .onlineTabBtn:hover { background: #3d3d4d; }
+  .onlineTabBtn.active { background: #4a6fa5; color: #fff; }
+  .onlinePane.hidden { display: none; }
+  .onlineStatusText { margin-top: 12px; font-size: 0.85em; color: #bcc; text-align: center; min-height: 1.2em; }
+  .onlineStatusText.err { color: #ff8a8a; }
+  #onlineHostInfo.hidden { display: none; }
+  #onlineCodeBox {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 14px;
+    background: #2d2d38; border-radius: 8px; padding: 10px 12px;
+  }
+  #onlineCodeText {
+    flex: 1; font-family: Consolas, monospace; font-size: 1.05em; font-weight: 700;
+    color: #ffd700; letter-spacing: 0.5px; word-break: break-all; text-align: left;
+  }
+  #onlineCodeBox button { width: auto; margin: 0; padding: 8px 14px; flex-shrink: 0; }
+
+  #onlineStatusBar {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    font-size: 0.85em; color: #bcc;
+    padding: 8px 12px;
+    background: #2d2d38;
+    border-radius: 8px;
+    margin-bottom: 10px;
+  }
+  #onlineStatusBar.hidden { display: none; }
+  #onlineStatusBar button { width: auto; margin: 0; padding: 6px 12px; font-size: 0.9em; flex-shrink: 0; }
   #modalChoices { display: flex; gap: 14px; justify-content: center; }
   .choiceBtn {
     width: min(80px, 18vw); height: min(80px, 18vw);
@@ -566,7 +605,7 @@
   body[data-theme="arcade"] .clockDisplay { font-family: 'VT323', monospace; font-size: 1.3em; background: transparent; border-radius: 0; color: #fff; }
   body[data-theme="arcade"] .clockDisplay.active { background: transparent; color: #ffe600; box-shadow: none; }
   body[data-theme="arcade"] .clockDisplay.low { color: #ff2e88; }
-  body[data-theme="arcade"] #status {
+  body[data-theme="arcade"] #status, body[data-theme="arcade"] #onlineStatusBar {
     background: #2a2a6e; border-radius: 0;
     font-family: 'Press Start 2P', monospace; font-size: 0.6em; line-height: 1.6; color: #fff;
   }
@@ -620,12 +659,12 @@
   body[data-theme="arcade"] #setupPanel h2 { font-family: 'Press Start 2P', monospace; font-size: 0.7em; color: #ffe600; }
 
   /* Modals */
-  body[data-theme="arcade"] #modalOverlay { background: rgba(8,6,15,0.82); }
-  body[data-theme="arcade"] #modal { border-radius: 0; box-shadow: none; border: 4px solid #2a2a6e; position: relative; overflow: hidden; }
+  body[data-theme="arcade"] #modalOverlay, body[data-theme="arcade"] #onlineOverlay { background: rgba(8,6,15,0.82); }
+  body[data-theme="arcade"] #modal, body[data-theme="arcade"] #onlineModal { border-radius: 0; box-shadow: none; border: 4px solid #2a2a6e; position: relative; overflow: hidden; }
   body[data-theme="arcade"] #modal[data-mood="gamble"] { border-color: #2a2a6e; }
   body[data-theme="arcade"] #modal[data-mood="roll"] { border-color: #ff2e88; }
   body[data-theme="arcade"] #modal[data-mood="evolve"] { border-color: #ffe600; }
-  body[data-theme="arcade"] #modal h3 { font-family: 'Press Start 2P', monospace; font-size: 1em; line-height: 1.5; color: #ffe600; text-shadow: 3px 3px 0 #ff2e88; }
+  body[data-theme="arcade"] #modal h3, body[data-theme="arcade"] #onlineModal h3 { font-family: 'Press Start 2P', monospace; font-size: 1em; line-height: 1.5; color: #ffe600; text-shadow: 3px 3px 0 #ff2e88; }
   body[data-theme="arcade"] .choiceBtn { border-radius: 0; border: 4px solid #00e5ff; background: #2a2a6e; color: #fff; box-shadow: 5px 5px 0 #0a5f6b; }
   body[data-theme="arcade"] .choiceBtn:hover { background: #3f3f9e; border-color: #00e5ff; }
   body[data-theme="arcade"] .gambleBtn { border-radius: 0; border: none; background: #00e5ff; color: #08060f; font-family: 'Press Start 2P', monospace; font-size: 0.55em; line-height: 1.7; box-shadow: 5px 5px 0 #0a5f6b; }
@@ -709,6 +748,10 @@
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-weight: 700; font-size: 14px;
     letter-spacing: 0.5px; text-transform: uppercase; color: #000; justify-content: flex-start; text-align: left;
   }
+  body[data-theme="swiss"] #onlineStatusBar {
+    background: transparent; border-radius: 0; border: 1px solid #000; padding: 8px 12px;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 13px; color: #000;
+  }
   body[data-theme="swiss"] #status.check-warn, body[data-theme="swiss"] #status.gameover { color: #e2231a; }
   body[data-theme="swiss"] .rules h2 {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; font-weight: 700;
@@ -777,8 +820,9 @@
   }
 
   /* Modals */
-  body[data-theme="swiss"] #modalOverlay { background: rgba(0,0,0,0.4); }
-  body[data-theme="swiss"] #modal { border-radius: 0; box-shadow: none; border: 1px solid #000; padding: 32px; }
+  body[data-theme="swiss"] #modalOverlay, body[data-theme="swiss"] #onlineOverlay { background: rgba(0,0,0,0.4); }
+  body[data-theme="swiss"] #modal, body[data-theme="swiss"] #onlineModal { border-radius: 0; box-shadow: none; border: 1px solid #000; padding: 32px; }
+  body[data-theme="swiss"] #onlineModal h3 { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #000; }
   body[data-theme="swiss"] #modal h3 {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; font-weight: 700;
     letter-spacing: 1.5px; text-transform: uppercase; color: #000;
@@ -857,6 +901,9 @@
 </div>
 
 <div id="sidePanel">
+  <div class="btnRow">
+    <button type="button" id="playOnlineBtn">🌐 Play Online</button>
+  </div>
   <div class="controls">
     <label>Mode
       <select id="mode">
@@ -985,6 +1032,10 @@
   </div>
 
   <div id="gamePanel">
+    <div id="onlineStatusBar" class="hidden">
+      <span id="onlineStatusBarText"></span>
+      <button type="button" id="onlineLeaveBtn">Leave</button>
+    </div>
     <div id="status">White to move</div>
 
     <div class="rules">
@@ -1054,6 +1105,47 @@
   </div>
 </div>
 
+<div id="onlineOverlay">
+  <div id="onlineModal">
+    <button type="button" class="closeX" id="onlineCloseBtn" aria-label="Close">✕</button>
+    <h3>🌐 Play Online</h3>
+    <div class="onlineTabs">
+      <button type="button" id="onlineTabHostBtn" class="onlineTabBtn active">Host a Game</button>
+      <button type="button" id="onlineTabJoinBtn" class="onlineTabBtn">Join a Game</button>
+    </div>
+
+    <div id="onlineHostPane" class="onlinePane">
+      <div class="controls">
+        <label class="full">You Play
+          <select id="onlineSideSelect">
+            <option value="random" selected>🎲 Random</option>
+            <option value="w">⚪ White</option>
+            <option value="b">⚫ Black</option>
+          </select>
+        </label>
+      </div>
+      <button type="button" id="onlineHostCreateBtn">Create Room</button>
+      <div id="onlineHostInfo" class="hidden">
+        <div id="onlineCodeBox">
+          <span id="onlineCodeText"></span>
+          <button type="button" id="onlineCodeCopyBtn">Copy</button>
+        </div>
+      </div>
+      <div id="onlineHostStatus" class="onlineStatusText"></div>
+    </div>
+
+    <div id="onlineJoinPane" class="onlinePane hidden">
+      <div class="controls">
+        <label class="full">Room Code
+          <input type="text" id="onlineJoinCodeInput" placeholder="chess2-ab12cd" autocomplete="off" spellcheck="false">
+        </label>
+      </div>
+      <button type="button" id="onlineJoinGoBtn">Join Room</button>
+      <div id="onlineJoinStatus" class="onlineStatusText"></div>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 
@@ -1070,6 +1162,7 @@ const FILES = 'abcdefgh';
 // ---------- State ----------
 let board, turn, ep, selected, legalCache, lastMove, gameOver, moveNum, inputLocked;
 let history, captured, halfmoveClock, positionKeys;
+let lastGameOverInfo = null; // {statusText, statusClass, icon, title, subtitle} from the most recent announceGameOver()
 let gameId = 0; // bumped each New Game; stale async callbacks bail when it changes
 
 // ---------- Clock state ----------
@@ -1085,6 +1178,15 @@ let clockIntervalId = null;
 let setupMode = false;
 let editorBoard = null;
 let editorTool = { type: 'K', color: 'w' }; // null = eraser
+
+// ---------- Online PvP state ----------
+let onlineActive = false;        // true once host+guest are connected and playing
+let onlineRole = null;           // 'host' | 'guest'
+let onlineMyColor = null;        // 'w' | 'b' — which side this browser plays
+let onlineRoomId = null;
+let onlinePeer = null;           // PeerJS Peer instance
+let onlineConn = null;           // PeerJS DataConnection to the other player
+let applyingRemoteState = false; // guards against re-broadcasting a state we just received
 
 // ---------- Theme ----------
 const EVO_STAGE = { P: 1, N: 2, B: 2, R: 3, Q: 4 }; // Arcade LV tag: evolution stage, 1-based
@@ -1664,6 +1766,7 @@ function playMove(m) {
     checkGameEnd();
     if (!gameOver && getClockOn()) startClockFor(turn); else renderClocks();
     maybeAIMove();
+    if (onlineActive && !applyingRemoteState) netSend({ type: 'state', snapshot: snapshotState() });
   };
 
   // promotion + evolution; skipped automatically if the piece got busted away
@@ -1740,20 +1843,26 @@ function aiShouldGamble(p, capturedPiece) {
   return (p.pts + base) < need && (p.pts + base * 2) >= need;
 }
 
+// records the last game-over announcement so it can be replayed verbatim
+// (e.g. by an online peer applying a synced end-of-game state) without re-deriving it
+function announceGameOver(statusText, statusClass, icon, title, subtitle) {
+  gameOver = true;
+  setStatus(statusText, statusClass);
+  showGameOverOverlay(icon, title, subtitle);
+  lastGameOverInfo = { statusText, statusClass, icon, title, subtitle };
+}
+
 function checkGameEnd() {
   const moves = allLegalMoves(board, turn, ep);
   const checked = inCheck(board, turn);
   if (moves.length === 0) {
-    gameOver = true;
     if (checked) {
       const winner = turn === 'w' ? 'Black' : 'White';
-      setStatus(`☠ CHECKMATE — ${winner} wins!`, 'gameover');
       logEvo(`Checkmate. ${winner} wins.`);
-      showGameOverOverlay('☠', 'Checkmate', `${winner} wins`);
+      announceGameOver(`☠ CHECKMATE — ${winner} wins!`, 'gameover', '☠', 'Checkmate', `${winner} wins`);
     } else {
-      setStatus('½ STALEMATE — draw', 'gameover');
       logEvo('Stalemate. Draw.');
-      showGameOverOverlay('½', 'Stalemate', 'Draw');
+      announceGameOver('½ STALEMATE — draw', 'gameover', '½', 'Stalemate', 'Draw');
     }
     render();
     return;
@@ -1764,10 +1873,8 @@ function checkGameEnd() {
   else if (halfmoveClock >= 100) draw = 'fifty-move rule';
   else if (isThreefoldRepetition()) draw = 'threefold repetition';
   if (draw) {
-    gameOver = true;
-    setStatus(`½ DRAW — ${draw}`, 'gameover');
     logEvo(`Draw — ${draw}.`);
-    showGameOverOverlay('½', 'Draw', draw.charAt(0).toUpperCase() + draw.slice(1));
+    announceGameOver(`½ DRAW — ${draw}`, 'gameover', '½', 'Draw', draw.charAt(0).toUpperCase() + draw.slice(1));
     render();
     return;
   }
@@ -1997,6 +2104,7 @@ function updateScoreboard() {
 
 function onSquareClick(r, c) {
   if (gameOver || inputLocked || turn === getAIColor()) return;
+  if (onlineActive && turn !== onlineMyColor) return; // not this player's turn online
   const p = board[r][c];
 
   // clicking a legal destination → move
@@ -2190,9 +2298,396 @@ function getEvolutionOn() {
   return document.getElementById('evolutionToggle').checked; // togglable mid-game
 }
 
+// ---------- Online PvP (WebRTC via PeerJS) ----------
+const NET_PROTO_V = 1;
+let onlineDesiredColor = 'random'; // host's pre-connection side choice
+let pendingRuleChange = null; // host only: { setting, oldValue, newValue } while awaiting guest's confirmation
+let PeerCtor = null;
+
+async function ensurePeerJs() {
+  if (!PeerCtor) {
+    const mod = await import('https://esm.sh/peerjs@1.5.4');
+    PeerCtor = mod.Peer || mod.default;
+  }
+  return PeerCtor;
+}
+
+function netSend(msg) {
+  if (onlineConn && onlineConn.open) onlineConn.send(msg);
+}
+
+function buildOnlineConfig(hostColor, guestColor) {
+  return {
+    board: cloneBoard(board),
+    sideToMove: turn,
+    hostColor, guestColor,
+    evolutionOn: getEvolutionOn(),
+    gambleOn: getGambleOn(),
+    clock: getClockOn()
+      ? { on: true, time: { w: clockTime.w, b: clockTime.b }, inc: { w: clockIncSetting.w, b: clockIncSetting.b },
+          mode: incrementMode, thresholdMs: incrementThresholdMs }
+      : { on: false }
+  };
+}
+
+function applyOnlineConfig(cfg) {
+  document.getElementById('mode').value = '2p';
+  document.getElementById('evolutionToggle').checked = cfg.evolutionOn;
+  document.getElementById('gambleToggle').checked = cfg.gambleOn;
+  document.getElementById('clockToggle').value = cfg.clock.on ? 'on' : 'off';
+  onlineActive = true;
+  closeOnlineOverlay();
+  initGame(cfg.board, cfg.sideToMove);
+  if (cfg.clock.on) {
+    clockTime = { w: cfg.clock.time.w, b: cfg.clock.time.b };
+    clockIncSetting = { w: cfg.clock.inc.w, b: cfg.clock.inc.b };
+    incrementMode = cfg.clock.mode;
+    incrementThresholdMs = cfg.clock.thresholdMs;
+    if (!gameOver) startClockFor(turn); else renderClocks();
+  }
+  lockOnlineControls(true);
+  updateOnlineStatusBar();
+  refreshUndoBtn();
+}
+
+function lockOnlineControls(lock) {
+  const ids = ['mode', 'difficulty', 'playAs',
+    'clockPreset', 'whiteTime', 'blackTime', 'sameTime', 'whiteInc', 'blackInc', 'sameInc',
+    'incMode', 'incActivation', 'incThreshold'];
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (el) el.disabled = lock;
+  }
+  // Evolution / Gambling / Clock-on-off stay live-togglable online (as they are locally),
+  // but only the host may propose a change — the guest can only agree or decline.
+  setRuleControlsDisabled(lock && onlineRole !== 'host');
+}
+
+function setRuleControlsDisabled(lock) {
+  for (const id of ['evolutionToggle', 'gambleToggle', 'clockToggle']) {
+    const el = document.getElementById(id);
+    if (el) el.disabled = lock;
+  }
+}
+
+function setRuleControlValue(setting, value) {
+  if (setting === 'evolutionOn') document.getElementById('evolutionToggle').checked = value;
+  else if (setting === 'gambleOn') document.getElementById('gambleToggle').checked = value;
+  else if (setting === 'clockOn') document.getElementById('clockToggle').value = value ? 'on' : 'off';
+}
+
+function describeRuleChange(setting, value) {
+  const label = setting === 'evolutionOn' ? 'Evolution' : setting === 'gambleOn' ? 'Gambling' : 'Clock';
+  return `turn ${label} ${value ? 'ON' : 'OFF'}`;
+}
+
+// Applies an already-agreed-upon rule change (both online peers call this with identical
+// arguments once negotiation succeeds, and local non-online play calls it directly).
+function applyRuleChangeLocally(setting, value) {
+  setRuleControlValue(setting, value);
+  refreshRulesVisibility();
+  if (setting === 'evolutionOn') render();
+  if (setting === 'gambleOn') updateSwissMeta();
+  if (setting === 'clockOn') {
+    if (value) { ensureAudio(); if (!gameOver) startClockFor(turn); }
+    else pauseClock();
+  }
+  renderClocks();
+  const label = setting === 'evolutionOn' ? 'Evolution' : setting === 'gambleOn' ? 'Gambling' : 'Clock';
+  if (history.length > 0) logEvo(`${label} turned ${value ? 'ON' : 'OFF'}.`);
+}
+
+// Host wants to flip one of the three live rule toggles while online: freeze the match,
+// revert the control until the guest agrees, then only apply the change once confirmed.
+function proposeOnlineRuleChange(setting, newValue) {
+  const oldValue = !newValue;
+  if (pendingRuleChange || inputLocked || gameOver ||
+      document.getElementById('modalOverlay').classList.contains('open')) {
+    setRuleControlValue(setting, oldValue); // can't propose right now — revert the click
+    setOnlineStatusBarText("Can't change rules mid-move — try again in a moment.");
+    setTimeout(() => { if (onlineActive) updateOnlineStatusBar(); }, 2500);
+    return;
+  }
+  pendingRuleChange = { setting, oldValue, newValue };
+  setRuleControlValue(setting, oldValue); // nothing actually changes until the guest agrees
+  setRuleControlsDisabled(true);
+  inputLocked = true;
+  pauseClock();
+  render();
+  setOnlineStatusBarText(`⏸ Proposing to ${describeRuleChange(setting, newValue)} — waiting for opponent…`);
+  netSend({ type: 'ruleChangeRequest', setting, value: newValue });
+}
+
+function askRuleChangeConfirm(setting, value, cb) {
+  const overlay = document.getElementById('modalOverlay');
+  const gen = gameId;
+  document.getElementById('modal').dataset.mood = 'gamble';
+  document.getElementById('modalTitle').textContent = `Host wants to ${describeRuleChange(setting, value)}`;
+  const box = document.getElementById('modalChoices');
+  box.innerHTML = '';
+
+  const agree = document.createElement('button');
+  agree.className = 'gambleBtn safe';
+  agree.innerHTML = '✔<span>Agree</span>';
+  agree.onclick = () => { overlay.classList.remove('open'); modalKeyMap = null; if (gen === gameId) cb(true); };
+
+  const decline = document.createElement('button');
+  decline.className = 'gambleBtn risk';
+  decline.innerHTML = '✕<span>Decline</span>';
+  decline.onclick = () => { overlay.classList.remove('open'); modalKeyMap = null; if (gen === gameId) cb(false); };
+
+  box.appendChild(agree);
+  box.appendChild(decline);
+  overlay.classList.add('open');
+  modalKeyMap = { y: () => agree.click(), n: () => decline.click(), Escape: () => decline.click() };
+}
+
+function onNetMessage(msg) {
+  switch (msg.type) {
+    case 'hello': {
+      if (onlineRole !== 'host') return;
+      if (msg.v !== NET_PROTO_V) {
+        netSend({ type: 'hello-ack', ok: false });
+        setOnlineHostStatus('Opponent is running an incompatible version of Chess 2.0.', true);
+        return;
+      }
+      const flip = onlineDesiredColor === 'random' ? (Math.random() < 0.5 ? 'w' : 'b') : onlineDesiredColor;
+      onlineMyColor = flip;
+      const guestColor = enemy(flip);
+      const cfg = buildOnlineConfig(flip, guestColor);
+      netSend({ type: 'hello-ack', ok: true });
+      netSend({ type: 'config', cfg });
+      applyOnlineConfig(cfg);
+      break;
+    }
+    case 'hello-ack':
+      if (onlineRole !== 'guest') return;
+      if (!msg.ok) {
+        setOnlineJoinStatus('Host rejected the connection (version mismatch). Ask them to refresh.', true);
+        leaveOnlineGame();
+        return;
+      }
+      setOnlineJoinStatus('Connected — waiting for the host to start the game…');
+      break;
+    case 'config':
+      if (onlineRole !== 'guest') return;
+      onlineMyColor = msg.cfg.guestColor;
+      applyOnlineConfig(msg.cfg);
+      break;
+    case 'state':
+      applyingRemoteState = true;
+      restoreSnapshot(msg.snapshot);
+      render();
+      if (gameOver) {
+        clockRunning = false;
+        if (msg.snapshot.gameOverInfo) {
+          const gi = msg.snapshot.gameOverInfo;
+          setStatus(gi.statusText, gi.statusClass);
+          showGameOverOverlay(gi.icon, gi.title, gi.subtitle);
+        }
+        renderClocks();
+      } else {
+        setTurnStatus();
+        if (getClockOn()) startClockFor(turn); else renderClocks();
+      }
+      applyingRemoteState = false;
+      break;
+    case 'resign':
+      applyResignEffects(msg.color);
+      break;
+    case 'ruleChangeRequest': {
+      if (onlineRole !== 'guest') return;
+      // guest is mid-resolving their own move (or the game just ended) — can't negotiate right now
+      if (inputLocked || gameOver || document.getElementById('modalOverlay').classList.contains('open')) {
+        netSend({ type: 'ruleChangeResponse', setting: msg.setting, value: msg.value, accepted: false, busy: true });
+        return;
+      }
+      inputLocked = true;
+      pauseClock();
+      render();
+      askRuleChangeConfirm(msg.setting, msg.value, accepted => {
+        if (accepted) applyRuleChangeLocally(msg.setting, msg.value);
+        netSend({ type: 'ruleChangeResponse', setting: msg.setting, value: msg.value, accepted });
+        inputLocked = false;
+        if (!gameOver && getClockOn()) startClockFor(turn); else renderClocks();
+      });
+      break;
+    }
+    case 'ruleChangeResponse': {
+      if (onlineRole !== 'host' || !pendingRuleChange) return;
+      const { setting, newValue } = pendingRuleChange;
+      pendingRuleChange = null;
+      setRuleControlsDisabled(false);
+      if (msg.accepted) {
+        applyRuleChangeLocally(setting, newValue);
+        updateOnlineStatusBar();
+      } else {
+        setOnlineStatusBarText(msg.busy ? 'Opponent is mid-move — try again in a moment.' : 'Opponent declined the change.');
+        setTimeout(() => { if (onlineActive) updateOnlineStatusBar(); }, 2500);
+      }
+      inputLocked = false;
+      if (!gameOver && getClockOn()) startClockFor(turn); else renderClocks();
+      break;
+    }
+  }
+}
+
+function handleConnLost(err) {
+  if (onlineActive) {
+    pendingRuleChange = null;
+    inputLocked = true;
+    clockRunning = false;
+    setRuleControlsDisabled(true);
+    setOnlineStatusBarText('⚠ Opponent disconnected');
+    render();
+  } else {
+    const detail = err ? ` (${err.type || err.message || err})` : '';
+    const msg = `Connection lost${detail}.`;
+    if (onlineRole === 'host') setOnlineHostStatus(msg, true);
+    else setOnlineJoinStatus(msg, true);
+  }
+}
+
+function hostGame() {
+  setOnlineHostStatus('Setting up room…');
+  ensurePeerJs().then(Peer => {
+    onlineRole = 'host';
+    onlineRoomId = 'chess2-' + Math.random().toString(36).slice(2, 8);
+    onlinePeer = new Peer(onlineRoomId);
+    onlinePeer.on('open', () => {
+      showOnlineCode(onlineRoomId);
+      setOnlineHostStatus('Waiting for opponent to join…');
+    });
+    onlinePeer.on('connection', c => {
+      onlineConn = c;
+      onlineConn.on('data', onNetMessage);
+      onlineConn.on('close', () => handleConnLost());
+      onlineConn.on('error', err => handleConnLost(err));
+    });
+    onlinePeer.on('error', err => setOnlineHostStatus(`Connection error: ${err.type || err.message || err}`, true));
+    onlinePeer.on('disconnected', () => handleConnLost());
+  }).catch(err => setOnlineHostStatus(`Couldn't load networking (${err.message || err}). Check your connection.`, true));
+}
+
+function joinGame(code) {
+  setOnlineJoinStatus('Connecting…');
+  ensurePeerJs().then(Peer => {
+    onlineRole = 'guest';
+    onlineRoomId = code;
+    onlinePeer = new Peer();
+    onlinePeer.on('open', () => {
+      onlineConn = onlinePeer.connect(code, { reliable: true });
+      onlineConn.on('open', () => netSend({ type: 'hello', v: NET_PROTO_V }));
+      onlineConn.on('data', onNetMessage);
+      onlineConn.on('close', () => handleConnLost());
+      onlineConn.on('error', err => handleConnLost(err));
+    });
+    onlinePeer.on('error', err => setOnlineJoinStatus(`Could not connect — check the code and try again. (${err.type || err.message || err})`, true));
+    onlinePeer.on('disconnected', () => handleConnLost());
+  }).catch(err => setOnlineJoinStatus(`Couldn't load networking (${err.message || err}). Check your connection.`, true));
+}
+
+function leaveOnlineGame() {
+  try { if (onlineConn) onlineConn.close(); } catch (e) { /* already closed */ }
+  try { if (onlinePeer) onlinePeer.destroy(); } catch (e) { /* already destroyed */ }
+  onlineConn = null;
+  onlinePeer = null;
+  onlineActive = false;
+  onlineRole = null;
+  onlineMyColor = null;
+  onlineRoomId = null;
+  inputLocked = false;
+  lockOnlineControls(false);
+  hideOnlineStatusBar();
+  refreshUndoBtn();
+  refreshResignBtn();
+}
+
+// ---------- Online overlay UI ----------
+function openOnlineOverlay() {
+  resetOnlineOverlayUI();
+  document.getElementById('onlineOverlay').classList.add('open');
+}
+function closeOnlineOverlay() {
+  document.getElementById('onlineOverlay').classList.remove('open');
+}
+function resetOnlineOverlayUI() {
+  switchOnlineTab('host');
+  document.getElementById('onlineHostInfo').classList.add('hidden');
+  setOnlineHostStatus('');
+  setOnlineJoinStatus('');
+  document.getElementById('onlineJoinCodeInput').value = '';
+  document.getElementById('onlineHostCreateBtn').disabled = false;
+  document.getElementById('onlineSideSelect').disabled = false;
+  document.getElementById('onlineJoinGoBtn').disabled = false;
+}
+function switchOnlineTab(which) {
+  const isHost = which === 'host';
+  document.getElementById('onlineTabHostBtn').classList.toggle('active', isHost);
+  document.getElementById('onlineTabJoinBtn').classList.toggle('active', !isHost);
+  document.getElementById('onlineHostPane').classList.toggle('hidden', !isHost);
+  document.getElementById('onlineJoinPane').classList.toggle('hidden', isHost);
+}
+function setOnlineHostStatus(text, isErr) {
+  const el = document.getElementById('onlineHostStatus');
+  el.textContent = text || '';
+  el.classList.toggle('err', !!isErr);
+}
+function setOnlineJoinStatus(text, isErr) {
+  const el = document.getElementById('onlineJoinStatus');
+  el.textContent = text || '';
+  el.classList.toggle('err', !!isErr);
+}
+function showOnlineCode(code) {
+  document.getElementById('onlineCodeText').textContent = code;
+  document.getElementById('onlineHostInfo').classList.remove('hidden');
+}
+function updateOnlineStatusBar() {
+  const bar = document.getElementById('onlineStatusBar');
+  if (!onlineActive) { bar.classList.add('hidden'); return; }
+  const colorLabel = onlineMyColor === 'w' ? '⚪ White' : '⚫ Black';
+  setOnlineStatusBarText(`🌐 Online — you are ${colorLabel} · Room ${onlineRoomId}`);
+  bar.classList.remove('hidden');
+}
+function setOnlineStatusBarText(text) {
+  document.getElementById('onlineStatusBarText').textContent = text;
+}
+function hideOnlineStatusBar() {
+  document.getElementById('onlineStatusBar').classList.add('hidden');
+}
+
+document.getElementById('playOnlineBtn').addEventListener('click', () => { ensureAudio(); openOnlineOverlay(); });
+document.getElementById('onlineCloseBtn').addEventListener('click', closeOnlineOverlay);
+document.getElementById('onlineTabHostBtn').addEventListener('click', () => switchOnlineTab('host'));
+document.getElementById('onlineTabJoinBtn').addEventListener('click', () => switchOnlineTab('join'));
+document.getElementById('onlineHostCreateBtn').addEventListener('click', () => {
+  onlineDesiredColor = document.getElementById('onlineSideSelect').value;
+  document.getElementById('onlineHostCreateBtn').disabled = true;
+  document.getElementById('onlineSideSelect').disabled = true;
+  hostGame();
+});
+document.getElementById('onlineCodeCopyBtn').addEventListener('click', () => {
+  if (!onlineRoomId || !navigator.clipboard) return;
+  navigator.clipboard.writeText(onlineRoomId).then(() => {
+    const btn = document.getElementById('onlineCodeCopyBtn');
+    const old = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = old; }, 1200);
+  }).catch(() => {});
+});
+document.getElementById('onlineJoinGoBtn').addEventListener('click', () => {
+  const code = document.getElementById('onlineJoinCodeInput').value.trim();
+  if (!code) { setOnlineJoinStatus('Enter a room code.', true); return; }
+  document.getElementById('onlineJoinGoBtn').disabled = true;
+  joinGame(code);
+});
+document.getElementById('onlineLeaveBtn').addEventListener('click', () => {
+  if (confirm('Leave the online game?')) leaveOnlineGame();
+});
+
 // ---------- Undo ----------
-function pushHistory() {
-  history.push({
+function snapshotState() {
+  return {
     board: cloneBoard(board),
     turn,
     ep: ep ? { r: ep.r, c: ep.c } : null,
@@ -2201,8 +2696,13 @@ function pushHistory() {
     captured: { w: captured.w, b: captured.b },
     clockTime: { w: clockTime.w, b: clockTime.b },
     positionKeys: positionKeys.slice(),
-    logHTML: document.getElementById('log').innerHTML
-  });
+    logHTML: document.getElementById('log').innerHTML,
+    gameOverInfo: gameOver ? lastGameOverInfo : null
+  };
+}
+
+function pushHistory() {
+  history.push(snapshotState());
 }
 
 function restoreSnapshot(s) {
@@ -2227,7 +2727,7 @@ function restoreSnapshot(s) {
 }
 
 function undo() {
-  if (inputLocked || !history.length) return;
+  if (onlineActive || inputLocked || !history.length) return;
   if (document.getElementById('modalOverlay').classList.contains('open')) return;
   gameId++; // invalidate any in-flight AI move callback — it would otherwise fire post-undo and move the wrong side
 
@@ -2248,7 +2748,7 @@ function undo() {
 
 function refreshUndoBtn() {
   const btn = document.getElementById('undoBtn');
-  if (btn) btn.disabled = inputLocked || history.length === 0 ||
+  if (btn) btn.disabled = onlineActive || inputLocked || history.length === 0 ||
     document.getElementById('modalOverlay').classList.contains('open');
 }
 
@@ -2257,17 +2757,22 @@ function resign() {
   if (gameOver) return;
   if (document.getElementById('modalOverlay').classList.contains('open')) return;
   const human = getHumanColor();
-  const resigningColor = human !== null ? human : turn; // vs AI: the human resigns; 2P: whoever's turn it is
+  let resigningColor = human !== null ? human : turn; // vs AI: the human resigns; 2P: whoever's turn it is
+  if (onlineActive) resigningColor = onlineMyColor; // online: only the local player can resign, for themselves
   const loser = resigningColor === 'w' ? 'White' : 'Black';
-  const winner = resigningColor === 'w' ? 'Black' : 'White';
   if (!confirm(`${loser} resigns — are you sure?`)) return;
 
-  gameOver = true;
+  applyResignEffects(resigningColor);
+  if (onlineActive) netSend({ type: 'resign', color: resigningColor });
+}
+
+function applyResignEffects(resigningColor) {
+  const loser = resigningColor === 'w' ? 'White' : 'Black';
+  const winner = resigningColor === 'w' ? 'Black' : 'White';
   clockRunning = false;
   inputLocked = true;
-  setStatus(`🏳 ${loser} resigned — ${winner} wins!`, 'gameover');
   logEvo(`${loser} resigned. ${winner} wins.`);
-  showGameOverOverlay('🏳', 'Resignation', `${winner} wins`);
+  announceGameOver(`🏳 ${loser} resigned — ${winner} wins!`, 'gameover', '🏳', 'Resignation', `${winner} wins`);
   renderClocks();
   render();
 }
@@ -2455,24 +2960,18 @@ for (const id of ['mode', 'playAs', 'difficulty'])
 // Evolution and Gambling are togglable live, at any point in the game.
 document.getElementById('evolutionToggle').addEventListener('change', () => {
   const on = document.getElementById('evolutionToggle').checked;
-  refreshRulesVisibility();
-  render();
-  if (history.length > 0) logEvo(`Evolution turned ${on ? 'ON' : 'OFF'}.`);
+  if (onlineActive && onlineRole === 'host') proposeOnlineRuleChange('evolutionOn', on);
+  else applyRuleChangeLocally('evolutionOn', on);
 });
 document.getElementById('gambleToggle').addEventListener('change', () => {
   const on = document.getElementById('gambleToggle').checked;
-  refreshRulesVisibility();
-  updateSwissMeta();
-  if (history.length > 0) logEvo(`Gambling turned ${on ? 'ON' : 'OFF'}.`);
+  if (onlineActive && onlineRole === 'host') proposeOnlineRuleChange('gambleOn', on);
+  else applyRuleChangeLocally('gambleOn', on);
 });
 document.getElementById('clockToggle').addEventListener('change', () => {
   const on = getClockOn();
-  if (on) ensureAudio();
-  refreshRulesVisibility();
-  if (on) { if (!gameOver) startClockFor(turn); }
-  else pauseClock();
-  renderClocks();
-  if (history.length > 0) logEvo(`Clock turned ${on ? 'ON' : 'OFF'}.`);
+  if (onlineActive && onlineRole === 'host') proposeOnlineRuleChange('clockOn', on);
+  else applyRuleChangeLocally('clockOn', on);
 });
 
 // ---------- Clock settings UI wiring ----------
@@ -2513,13 +3012,13 @@ document.getElementById('incActivation').addEventListener('change', () => {
     document.getElementById('incActivation').value === 'threshold' ? '' : 'none';
 });
 
-document.getElementById('newGameBtn').addEventListener('click', () => { ensureAudio(); initGame(); });
-document.getElementById('overlayNewGameBtn').addEventListener('click', () => { ensureAudio(); initGame(); });
+document.getElementById('newGameBtn').addEventListener('click', () => { if (onlineActive) leaveOnlineGame(); ensureAudio(); initGame(); });
+document.getElementById('overlayNewGameBtn').addEventListener('click', () => { if (onlineActive) leaveOnlineGame(); ensureAudio(); initGame(); });
 document.getElementById('undoBtn').addEventListener('click', undo);
 document.getElementById('resignBtn').addEventListener('click', resign);
 
 // ---------- Setup panel wiring ----------
-document.getElementById('setupBtn').addEventListener('click', () => { ensureAudio(); openSetup(); });
+document.getElementById('setupBtn').addEventListener('click', () => { if (onlineActive) leaveOnlineGame(); ensureAudio(); openSetup(); });
 document.getElementById('setupCancelBtn').addEventListener('click', closeSetup);
 document.getElementById('setupStartBtn').addEventListener('click', startSetupGame);
 document.getElementById('setupBasis').addEventListener('change', e => loadSetupBasis(e.target.value));
@@ -2562,7 +3061,7 @@ document.addEventListener('keydown', e => {
   if (setupMode) return;
   const key = e.key.toLowerCase();
   if (key === 'u') { e.preventDefault(); undo(); }
-  else if (key === 'n') { e.preventDefault(); ensureAudio(); initGame(); }
+  else if (key === 'n') { e.preventDefault(); if (onlineActive) leaveOnlineGame(); ensureAudio(); initGame(); }
   else if (key === 'r') { e.preventDefault(); resign(); }
 });
 
