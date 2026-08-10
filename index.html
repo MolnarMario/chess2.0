@@ -1146,18 +1146,22 @@
   </div>
 </div>
 
+<script src="game-core.js"></script>
 <script>
 'use strict';
 
 // ---------- Constants ----------
-const VALUES = { P: 1, N: 3, B: 3, R: 5, Q: 10, K: 0 };
-const THRESH = { P: 2, N: 6, B: 6, R: 10, Q: 20 };
+// Rules engine (board, moves, evolution, the applyMove reducer) lives in
+// game-core.js — a plain object with no DOM/timer/network dependencies, so it
+// can be unit tested outside the browser. This just borrows its names.
+const { VALUES, THRESH, NAMES, FILES, inB, sqName, enemy, newPiece,
+        cloneBoard, findKing, isAttacked, inCheck,
+        pseudoMoves, applyMoveToBoard, legalMoves, allLegalMoves,
+        nextEvolutionStage, applyMove: applyMoveCore } = GameCore;
 const GLYPHS = {
   w: { K: '♔', Q: '♕', R: '♖', B: '♗', N: '♘', P: '♙' },
   b: { K: '♚', Q: '♛', R: '♜', B: '♝', N: '♞', P: '♟' }
 };
-const NAMES = { P: 'Pawn', N: 'Knight', B: 'Bishop', R: 'Rook', Q: 'Queen', K: 'King' };
-const FILES = 'abcdefgh';
 
 // ---------- State ----------
 let board, turn, ep, selected, legalCache, lastMove, gameOver, moveNum, inputLocked;
@@ -1215,12 +1219,6 @@ function setTheme(theme, doRender) {
   try { localStorage.setItem('chess2Theme', theme); } catch (e) { /* private browsing / storage disabled */ }
   updateSwissMeta();
   if (doRender) render();
-}
-
-const GAMBLE_WIN = 0.5; // probability a gamble pays off
-
-function newPiece(t, c) {
-  return { t, c, pts: 0, moved: false, amazon: false };
 }
 
 function backRankBoard(back) {
@@ -1285,11 +1283,6 @@ function initGame(startBoard, startTurn) {
   if (!gameOver && getClockOn()) startClockFor(turn); else renderClocks();
   setTimeout(maybeAIMove, 100);
 }
-
-// ---------- Helpers ----------
-const inB = (r, c) => r >= 0 && r < 8 && c >= 0 && c < 8;
-const sqName = (r, c) => FILES[c] + (8 - r);
-const enemy = c => (c === 'w' ? 'b' : 'w');
 
 // ---------- Clock ----------
 const CLOCK_PRESETS = {
@@ -1451,186 +1444,6 @@ function renderClocks() {
   bEl.classList.toggle('low', bMs < 20000);
 }
 
-function cloneBoard(b) {
-  return b.map(row => row.map(p => (p ? { ...p } : null)));
-}
-
-function findKing(b, color) {
-  for (let r = 0; r < 8; r++)
-    for (let c = 0; c < 8; c++)
-      if (b[r][c] && b[r][c].t === 'K' && b[r][c].c === color) return { r, c };
-  return null;
-}
-
-// ---------- Attack detection ----------
-const KNIGHT_D = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
-const ROOK_D   = [[-1,0],[1,0],[0,-1],[0,1]];
-const BISHOP_D = [[-1,-1],[-1,1],[1,-1],[1,1]];
-const KING_D   = ROOK_D.concat(BISHOP_D);
-
-function isAttacked(b, r, c, byColor) {
-  // pawns
-  const dir = byColor === 'w' ? 1 : -1; // attacker sits dir rows "below" target from its own perspective
-  for (const dc of [-1, 1]) {
-    const pr = r + dir, pc = c + dc;
-    if (inB(pr, pc)) {
-      const p = b[pr][pc];
-      if (p && p.c === byColor && p.t === 'P') return true;
-    }
-  }
-  // knights (and amazons)
-  for (const [dr, dc] of KNIGHT_D) {
-    const nr = r + dr, nc = c + dc;
-    if (inB(nr, nc)) {
-      const p = b[nr][nc];
-      if (p && p.c === byColor && (p.t === 'N' || (p.t === 'Q' && p.amazon))) return true;
-    }
-  }
-  // sliding: rook lines
-  for (const [dr, dc] of ROOK_D) {
-    let nr = r + dr, nc = c + dc;
-    while (inB(nr, nc)) {
-      const p = b[nr][nc];
-      if (p) {
-        if (p.c === byColor && (p.t === 'R' || p.t === 'Q')) return true;
-        break;
-      }
-      nr += dr; nc += dc;
-    }
-  }
-  // sliding: bishop lines
-  for (const [dr, dc] of BISHOP_D) {
-    let nr = r + dr, nc = c + dc;
-    while (inB(nr, nc)) {
-      const p = b[nr][nc];
-      if (p) {
-        if (p.c === byColor && (p.t === 'B' || p.t === 'Q')) return true;
-        break;
-      }
-      nr += dr; nc += dc;
-    }
-  }
-  // king
-  for (const [dr, dc] of KING_D) {
-    const nr = r + dr, nc = c + dc;
-    if (inB(nr, nc)) {
-      const p = b[nr][nc];
-      if (p && p.c === byColor && p.t === 'K') return true;
-    }
-  }
-  return false;
-}
-
-function inCheck(b, color) {
-  const k = findKing(b, color);
-  return k ? isAttacked(b, k.r, k.c, enemy(color)) : false;
-}
-
-// ---------- Move generation ----------
-function pseudoMoves(b, r, c, epSq) {
-  const p = b[r][c];
-  if (!p) return [];
-  const moves = [];
-  const add = (nr, nc, extra) => moves.push(Object.assign({ from: { r, c }, to: { r: nr, c: nc } }, extra || {}));
-
-  const slide = dirs => {
-    for (const [dr, dc] of dirs) {
-      let nr = r + dr, nc = c + dc;
-      while (inB(nr, nc)) {
-        const q = b[nr][nc];
-        if (!q) add(nr, nc);
-        else { if (q.c !== p.c) add(nr, nc); break; }
-        nr += dr; nc += dc;
-      }
-    }
-  };
-  const jump = dirs => {
-    for (const [dr, dc] of dirs) {
-      const nr = r + dr, nc = c + dc;
-      if (inB(nr, nc) && (!b[nr][nc] || b[nr][nc].c !== p.c)) add(nr, nc);
-    }
-  };
-
-  switch (p.t) {
-    case 'P': {
-      const dir = p.c === 'w' ? -1 : 1;
-      const startRow = p.c === 'w' ? 6 : 1;
-      // forward
-      if (inB(r + dir, c) && !b[r + dir][c]) {
-        add(r + dir, c);
-        if (r === startRow && !b[r + 2 * dir][c]) add(r + 2 * dir, c, { double: true });
-      }
-      // captures
-      for (const dc of [-1, 1]) {
-        const nr = r + dir, nc = c + dc;
-        if (!inB(nr, nc)) continue;
-        const q = b[nr][nc];
-        if (q && q.c !== p.c) add(nr, nc);
-        else if (!q && epSq && epSq.r === nr && epSq.c === nc) add(nr, nc, { ep: true });
-      }
-      break;
-    }
-    case 'N': jump(KNIGHT_D); break;
-    case 'B': slide(BISHOP_D); break;
-    case 'R': slide(ROOK_D); break;
-    case 'Q':
-      slide(KING_D);
-      if (p.amazon) jump(KNIGHT_D);
-      break;
-    case 'K': {
-      jump(KING_D);
-      // castling
-      if (!p.moved && !isAttacked(b, r, c, enemy(p.c))) {
-        // kingside
-        const rk = b[r][7];
-        if (rk && rk.t === 'R' && rk.c === p.c && !rk.moved &&
-            !b[r][5] && !b[r][6] &&
-            !isAttacked(b, r, 5, enemy(p.c)) && !isAttacked(b, r, 6, enemy(p.c))) {
-          add(r, 6, { castle: 'k' });
-        }
-        // queenside
-        const rq = b[r][0];
-        if (rq && rq.t === 'R' && rq.c === p.c && !rq.moved &&
-            !b[r][1] && !b[r][2] && !b[r][3] &&
-            !isAttacked(b, r, 3, enemy(p.c)) && !isAttacked(b, r, 2, enemy(p.c))) {
-          add(r, 2, { castle: 'q' });
-        }
-      }
-      break;
-    }
-  }
-  return moves;
-}
-
-function applyMoveToBoard(b, m) {
-  // mutates b; no evolution / promotion choice here (used for legality sim too)
-  const p = b[m.from.r][m.from.c];
-  b[m.to.r][m.to.c] = p;
-  b[m.from.r][m.from.c] = null;
-  if (m.ep) b[m.from.r][m.to.c] = null;
-  if (m.castle === 'k') { b[m.to.r][5] = b[m.to.r][7]; b[m.to.r][7] = null; }
-  if (m.castle === 'q') { b[m.to.r][3] = b[m.to.r][0]; b[m.to.r][0] = null; }
-}
-
-function legalMoves(b, r, c, epSq) {
-  const p = b[r][c];
-  if (!p) return [];
-  return pseudoMoves(b, r, c, epSq).filter(m => {
-    const sim = cloneBoard(b);
-    applyMoveToBoard(sim, m);
-    return !inCheck(sim, p.c);
-  });
-}
-
-function allLegalMoves(b, color, epSq) {
-  const out = [];
-  for (let r = 0; r < 8; r++)
-    for (let c = 0; c < 8; c++)
-      if (b[r][c] && b[r][c].c === color)
-        out.push(...legalMoves(b, r, c, epSq));
-  return out;
-}
-
 // ---------- Modal (promotion / evolution choice) ----------
 function askChoice(title, options, color, cb) {
   const overlay = document.getElementById('modalOverlay');
@@ -1689,35 +1502,7 @@ function flashResult(win, text, cb) {
   setTimeout(() => { overlay.classList.remove('open'); if (gen === gameId) cb(); }, 1200);
 }
 
-// ---------- Evolution ----------
-function evolveChain(r, c, done) {
-  const p = board[r][c];
-  if (!p || p.t === 'K') return done();
-  if (!getEvolutionOn()) return done();
-  if (p.t === 'Q' && p.amazon) return done();
-  const need = THRESH[p.t];
-  if (p.pts < need) return done();
-
-  if (p.t === 'P') {
-    const apply = choice => {
-      p.pts -= need;
-      p.t = choice;
-      logEvo(`${sqName(r, c)}: Pawn evolved into ${NAMES[choice]}!`);
-      flashEvolve(r, c, () => evolveChain(r, c, done));
-    };
-    if (p.c === getAIColor()) apply(aiPickEvolution(r, c));
-    else askChoice(`${p.c === 'w' ? 'White' : 'Black'} Pawn evolves! Choose:`, ['N', 'B'], p.c, apply);
-    return;
-  }
-  p.pts -= need;
-  let msg;
-  if (p.t === 'N' || p.t === 'B') { msg = `${NAMES[p.t]} evolved into Rook!`; p.t = 'R'; }
-  else if (p.t === 'R') { msg = 'Rook evolved into Queen!'; p.t = 'Q'; }
-  else if (p.t === 'Q') { msg = 'Queen ascended — AMAZON! (Queen + Knight moves)'; p.amazon = true; }
-  logEvo(`${sqName(r, c)}: ${msg}`);
-  flashEvolve(r, c, () => evolveChain(r, c, done));
-}
-
+// ---------- Evolution (animation + AI choice heuristic) ----------
 function flashEvolve(r, c, then) {
   render();
   const gen = gameId;
@@ -1728,38 +1513,46 @@ function flashEvolve(r, c, then) {
   } else then();
 }
 
+function describeEvolution(from, to) {
+  if (from === 'P') return `Pawn evolved into ${NAMES[to]}!`;
+  if (to === 'AMAZON') return 'Queen ascended — AMAZON! (Queen + Knight moves)';
+  return `${NAMES[from]} evolved into ${NAMES[to]}!`;
+}
+
+// AI gambles only when doubling would complete an evolution that single points won't
+function aiShouldGamble(piece, capturedType, base) {
+  if (piece.t === 'K') return false;
+  const need = THRESH[piece.t];
+  return (piece.pts + base) < need && (piece.pts + base * 2) >= need;
+}
+
 // ---------- Game flow ----------
-function playMove(m) {
+// Drives GameCore.applyMove's generator: every point that used to be a DOM
+// callback nested inside playMove/resolveCapture/evolveChain is now a plain
+// descriptor the generator yields. This decides how to answer it — an AI
+// heuristic, or a modal — and resumes the generator with gen.next(answer).
+function runMove(m) {
   pushHistory();              // snapshot full state for Undo (before any mutation)
   if (getClockOn()) clockConsumeTurn(turn);
   inputLocked = true;
-  const p = board[m.from.r][m.from.c];
-  const moverColor = p.c;
-  const capturedPiece = m.ep ? board[m.from.r][m.to.c] : board[m.to.r][m.to.c];
-  m.captured = !!capturedPiece; // drives the on-board capture indicator until the next move
-  const wasPawnMove = p.t === 'P';
-  const moveText = `${moveNum}. ${turn === 'w' ? '' : '… '}${NAMES[p.t]} ${sqName(m.from.r, m.from.c)}${capturedPiece ? '×' : '–'}${sqName(m.to.r, m.to.c)}`;
 
-  applyMoveToBoard(board, m);
-  p.moved = true;
+  const moveNumLabel = `${moveNum}. ${turn === 'w' ? '' : '… '}`;
+  const pieceName = NAMES[board[m.from.r][m.from.c].t];
+  const fromSq = sqName(m.from.r, m.from.c), toSq = sqName(m.to.r, m.to.c);
 
-  // en-passant availability for next move
-  ep = m.double ? { r: (m.from.r + m.to.r) / 2, c: m.from.c } : null;
-  // fifty-move clock: reset on pawn move or capture, else increment
-  halfmoveClock = (wasPawnMove || capturedPiece) ? 0 : halfmoveClock + 1;
-  if (turn === 'b') moveNum++;
+  const core = { board, turn, ep, moveNum, halfmoveClock, captured };
+  const gen = applyMoveCore(core, m, { evolutionOn: getEvolutionOn(), gambleOn: getGambleOn() });
 
-  // show the move immediately (so captures are visible behind any modal)
-  selected = null;
-  legalCache = [];
-  lastMove = m;
-  render();
-
-  const finish = () => {
+  function finish(result) {
+    board = result.board;
+    turn = result.turn;
+    ep = result.ep;
+    moveNum = result.moveNum;
+    halfmoveClock = result.halfmoveClock;
+    captured = result.captured;
+    lastMove = result.lastMove;
     selected = null;
     legalCache = [];
-    lastMove = m;
-    turn = enemy(turn);
     inputLocked = false;
     render();
     pushPositionKey();
@@ -1767,80 +1560,68 @@ function playMove(m) {
     if (!gameOver && getClockOn()) startClockFor(turn); else renderClocks();
     maybeAIMove();
     if (onlineActive && !applyingRemoteState) netSend({ type: 'state', snapshot: snapshotState() });
-  };
-
-  // promotion + evolution; skipped automatically if the piece got busted away
-  const proceed = () => {
-    if (board[m.to.r][m.to.c] !== p) return finish(); // capturing piece was destroyed by a lost gamble
-    const lastRank = moverColor === 'w' ? 0 : 7;
-    if (p.t === 'P' && m.to.r === lastRank) {
-      const applyPromo = choice => {
-        p.t = choice;
-        logEvo(`${sqName(m.to.r, m.to.c)}: Pawn promoted to ${NAMES[choice]}.`);
-        evolveChain(m.to.r, m.to.c, finish);
-      };
-      if (moverColor === getAIColor()) applyPromo('Q');
-      else askChoice(`${moverColor === 'w' ? 'White' : 'Black'} Pawn promotes! Choose:`, ['Q', 'R', 'B', 'N'], moverColor, applyPromo);
-      return;
-    }
-    evolveChain(m.to.r, m.to.c, finish);
-  };
-
-  if (capturedPiece) resolveCapture(p, m, capturedPiece, moveText, moverColor, proceed);
-  else { logMove(moveText); proceed(); }
-}
-
-// ---------- Capture & Gambling ----------
-function resolveCapture(p, m, capturedPiece, moveText, moverColor, proceed) {
-  const base = VALUES[capturedPiece.t];
-
-  const bank = pts => {
-    p.pts += pts;
-    captured[moverColor] += pts;
-    logMove(`${moveText} (+${pts} pts, captured ${NAMES[capturedPiece.t]})`);
-    proceed();
-  };
-  const bust = () => {
-    board[m.to.r][m.to.c] = null; // capturing piece is lost
-    logMove(moveText);
-    logEvo(`${sqName(m.to.r, m.to.c)}: 💀 Gamble BUST! ${NAMES[p.t]} lost — captured ${NAMES[capturedPiece.t]} for 0 pts.`);
-    proceed();
-  };
-  const doGamble = () => {
-    const win = Math.random() < GAMBLE_WIN;
-    flashResult(win, win ? `🎲 WIN!  +${base * 2}` : '💀 BUST!', () => {
-      if (win) { logEvo(`${sqName(m.to.r, m.to.c)}: 🎲 Gamble WON — double loot!`); bank(base * 2); }
-      else bust();
-    });
-  };
-
-  // gambling unavailable for the King, a maxed Amazon (points are useless), or
-  // a piece that's currently shielding its own King (losing it would expose check)
-  const maxed = p.t === 'Q' && p.amazon;
-  const canGamble = getGambleOn() && p.t !== 'K' && !maxed && !gambleExposesKing(p, m, moverColor);
-  if (!canGamble) return bank(base);
-
-  if (moverColor === getAIColor()) {
-    if (aiShouldGamble(p, capturedPiece)) doGamble();
-    else bank(base);
-  } else {
-    askGamble(p, capturedPiece, base, doGamble, () => bank(base));
   }
-}
 
-// would removing the capturing piece (a bust) leave the mover's own King in check?
-function gambleExposesKing(p, m, moverColor) {
-  const sim = cloneBoard(board);
-  sim[m.to.r][m.to.c] = null;
-  return inCheck(sim, moverColor);
-}
+  function step(input) {
+    const result = gen.next(input);
+    if (result.done) return finish(result.value);
+    const ev = result.value;
+    board = ev.board; // reducer's working board — keep the global in sync so render() sees it
 
-// AI gambles only when doubling would complete an evolution that single points won't
-function aiShouldGamble(p, capturedPiece) {
-  if (p.t === 'K' || (p.t === 'Q' && p.amazon)) return false;
-  const need = THRESH[p.t];
-  const base = VALUES[capturedPiece.t];
-  return (p.pts + base) < need && (p.pts + base * 2) >= need;
+    switch (ev.type) {
+      case 'moved':
+        lastMove = Object.assign({}, m, { captured: !!ev.capturedPiece });
+        selected = null;
+        legalCache = [];
+        if (!ev.capturedPiece) logMove(`${moveNumLabel}${pieceName} ${fromSq}–${toSq}`);
+        render(); // show the move immediately, so captures are visible behind any modal
+        step();
+        break;
+
+      case 'gamble':
+        if (ev.color === getAIColor()) step(aiShouldGamble(ev.piece, ev.capturedType, ev.base));
+        else askGamble({ t: ev.piece.t }, { t: ev.capturedType }, ev.base, () => step(true), () => step(false));
+        break;
+
+      case 'gambleRolled':
+        flashResult(ev.win, ev.win ? `🎲 WIN!  +${ev.base * 2}` : '💀 BUST!', () => step());
+        break;
+
+      case 'captureBanked':
+        if (ev.gambled === 'win') logEvo(`${sqName(ev.square.r, ev.square.c)}: 🎲 Gamble WON — double loot!`);
+        logMove(`${moveNumLabel}${pieceName} ${fromSq}×${toSq} (+${ev.pts} pts, captured ${NAMES[ev.capturedType]})`);
+        step();
+        break;
+
+      case 'captureBust':
+        logMove(`${moveNumLabel}${pieceName} ${fromSq}×${toSq}`);
+        logEvo(`${sqName(ev.square.r, ev.square.c)}: 💀 Gamble BUST! ${NAMES[ev.piece.t]} lost — captured ${NAMES[ev.capturedType]} for 0 pts.`);
+        step();
+        break;
+
+      case 'promotion':
+        if (ev.color === getAIColor()) step('Q');
+        else askChoice(`${ev.color === 'w' ? 'White' : 'Black'} Pawn promotes! Choose:`, ev.options, ev.color, choice => step(choice));
+        break;
+
+      case 'promoted':
+        logEvo(`${sqName(ev.square.r, ev.square.c)}: Pawn promoted to ${NAMES[ev.choice]}.`);
+        step();
+        break;
+
+      case 'evolutionChoice':
+        if (ev.color === getAIColor()) step(aiPickEvolution(ev.square.r, ev.square.c));
+        else askChoice(`${ev.color === 'w' ? 'White' : 'Black'} Pawn evolves! Choose:`, ev.options, ev.color, choice => step(choice));
+        break;
+
+      case 'evolved':
+        logEvo(`${sqName(ev.square.r, ev.square.c)}: ${describeEvolution(ev.from, ev.to)}`);
+        flashEvolve(ev.square.r, ev.square.c, () => step());
+        break;
+    }
+  }
+
+  step();
 }
 
 // records the last game-over announcement so it can be replayed verbatim
@@ -2110,7 +1891,7 @@ function onSquareClick(r, c) {
   // clicking a legal destination → move
   const mv = legalCache.find(m => m.to.r === r && m.to.c === c);
   if (selected && mv) {
-    playMove(mv);
+    runMove(mv);
     return;
   }
   // select own piece
@@ -2820,15 +2601,17 @@ function genAllPseudo(b, color, epSq) {
   return out;
 }
 
-// auto-resolve evolution inside the search (pawn defaults to knight)
+// auto-resolve evolution inside the search (pawn defaults to knight) — shares
+// the THRESH walk with the real evolveChain path (see nextEvolutionStage in
+// game-core.js) so the two can't drift out of sync
 function autoEvolve(p) {
   if (!getEvolutionOn()) return;
-  while (p.t !== 'K' && !(p.t === 'Q' && p.amazon) && p.pts >= THRESH[p.t]) {
-    p.pts -= THRESH[p.t];
-    if (p.t === 'P') p.t = 'N';
-    else if (p.t === 'N' || p.t === 'B') p.t = 'R';
-    else if (p.t === 'R') p.t = 'Q';
-    else if (p.t === 'Q') p.amazon = true;
+  let stage;
+  while ((stage = nextEvolutionStage(p, THRESH))) {
+    p.pts -= stage.cost;
+    if (stage.choice) p.t = 'N';
+    else if (stage.amazon) p.amazon = true;
+    else p.t = stage.to;
   }
 }
 
@@ -2950,7 +2733,7 @@ function maybeAIMove() {
     if (gen !== gameId || gameOver) return; // game may have ended (e.g. resignation) while the AI "thought"
     const m = chooseAIMove();
     inputLocked = false;
-    if (m) playMove(m);
+    if (m) runMove(m);
   }, 300);
 }
 
