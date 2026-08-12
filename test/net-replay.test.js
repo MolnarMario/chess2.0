@@ -153,6 +153,106 @@ test('a whole sequence of moves stays in step across the two clients', () => {
   assert.equal(mine.moveNum, 3);
 });
 
+// ---------- Resuming a game from its recorded session ----------
+
+function findMove(core, from, to) {
+  return GameCore.allLegalMoves(core.board, core.turn, core.ep)
+    .find(x => x.from.r === from.r && x.from.c === from.c && x.to.r === to.r && x.to.c === to.c);
+}
+
+// Mirrors netReplayGameLog: rebuild a game purely from the opening position, the seed,
+// and the recorded session — no positions are carried over from the original run.
+function replaySession(startBoard, startTurn, startRules, seed, log) {
+  let core = baseCore(GameCore.cloneBoard(startBoard), { turn: startTurn });
+  const rules = Object.assign({}, startRules);
+  const rng = mulberry32(seed);
+  for (const e of log) {
+    if (e.kind === 'rule') { rules[e.setting] = e.value; continue; }
+    const mv = findMove(core, e.from, e.to);
+    assert.ok(mv, `replay hit an illegal move ${JSON.stringify(e)}`);
+    core = asReplayer(core, mv, Object.assign({ rng }, rules), e.choices).core;
+  }
+  return core;
+}
+
+test('a recorded session replays to the same position, across a mid-game rule change', () => {
+  const setup = () => {
+    const b = emptyBoard();
+    b[7][4] = newPiece('K', 'w');
+    b[0][4] = newPiece('K', 'b');
+    b[4][0] = newPiece('R', 'w');
+    b[4][3] = newPiece('N', 'b');  // rook captures this one, with gambling ON
+    b[5][5] = newPiece('B', 'w');
+    b[3][3] = newPiece('P', 'b');  // bishop captures this one, after gambling is OFF
+    b[1][7] = newPiece('P', 'b');
+    return b;
+  };
+  const seed = 20260812;
+  const script = [
+    { from: { r: 4, c: 0 }, to: { r: 4, c: 3 } },
+    { from: { r: 1, c: 7 }, to: { r: 2, c: 7 } },
+    { rule: 'gambleOn', value: false },
+    { from: { r: 5, c: 5 }, to: { r: 3, c: 3 } },
+    { from: { r: 2, c: 7 }, to: { r: 3, c: 7 } }
+  ];
+
+  // the original game: play it, recording exactly what the session log would record
+  const startRules = { gambleOn: true, evolutionOn: true };
+  const rules = Object.assign({}, startRules);
+  const rng = mulberry32(seed);
+  let core = baseCore(setup());
+  const log = [];
+  for (const step of script) {
+    if (step.rule) {
+      rules[step.rule] = step.value;
+      log.push({ kind: 'rule', setting: step.rule, value: step.value });
+      continue;
+    }
+    const mv = findMove(core, step.from, step.to);
+    assert.ok(mv, `setup move should be legal: ${JSON.stringify(step)}`);
+    const played = asMover(core, mv, Object.assign({ rng }, rules), ALWAYS);
+    log.push({ kind: 'move', from: step.from, to: step.to, choices: played.choices });
+    core = played.core;
+  }
+
+  // gambling was on for the first capture and off for the second, so the dice were
+  // drawn exactly once — a replayer that got that wrong would fall out of step
+  assert.equal(log.filter(e => e.kind === 'move' && e.choices.length > 0).length, 1);
+
+  const resumed = replaySession(setup(), 'w', startRules, seed, log);
+  assert.deepEqual(resumed, core);
+});
+
+test('resuming re-derives captured points and move number, not just the pieces', () => {
+  const setup = () => {
+    const b = emptyBoard();
+    b[7][4] = newPiece('K', 'w');
+    b[0][4] = newPiece('K', 'b');
+    b[4][0] = newPiece('R', 'w');
+    b[4][3] = newPiece('Q', 'b');
+    b[1][7] = newPiece('P', 'b');
+    return b;
+  };
+  const seed = 7;
+  const rules = { gambleOn: false, evolutionOn: true };
+  const rng = mulberry32(seed);
+  let core = baseCore(setup());
+  const log = [];
+  for (const step of [{ from: { r: 4, c: 0 }, to: { r: 4, c: 3 } }, { from: { r: 1, c: 7 }, to: { r: 3, c: 7 } }]) {
+    const mv = findMove(core, step.from, step.to);
+    const played = asMover(core, mv, Object.assign({ rng }, rules), ALWAYS);
+    log.push({ kind: 'move', from: step.from, to: step.to, choices: played.choices });
+    core = played.core;
+  }
+  assert.equal(core.captured.w, GameCore.VALUES.Q);
+
+  const resumed = replaySession(setup(), 'w', rules, seed, log);
+  assert.equal(resumed.captured.w, core.captured.w);
+  assert.equal(resumed.moveNum, core.moveNum);
+  assert.equal(resumed.halfmoveClock, core.halfmoveClock);
+  assert.deepEqual(resumed, core);
+});
+
 test('a tampered promotion choice cannot put a second king on the replayer\'s board', () => {
   const setup = () => {
     const b = emptyBoard();
