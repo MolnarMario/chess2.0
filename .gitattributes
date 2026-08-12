@@ -1,0 +1,3 @@
+# Vendored dependencies are byte-for-byte upstream copies: no line-ending translation,
+# or the SHA-256 recorded in vendor/README.md stops matching on checkout.
+vendor/** -text

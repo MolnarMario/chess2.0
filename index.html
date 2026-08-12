@@ -178,6 +178,12 @@
   }
   #capBarTop { margin-bottom: 10px; }
   #capBarBottom { margin-top: 10px; }
+  /* Playing Black online: the board is drawn from Black's side, so swap the two bars
+     to match — your own clock and captures belong under the board, as White's do. */
+  body.boardFlipped #wordmarkArea { order: 1; }
+  body.boardFlipped #capBarBottom { order: 2; margin-top: 0; margin-bottom: 10px; }
+  body.boardFlipped #boardArea { order: 3; }
+  body.boardFlipped #capBarTop { order: 4; margin-bottom: 0; margin-top: 10px; }
   .capSide { font-weight: 600; color: #fff; }
   .capPts b { color: #8fd48f; font-family: Consolas, monospace; font-size: 1.05em; }
   .capLead {
@@ -449,6 +455,10 @@
     margin-bottom: 10px;
   }
   #onlineStatusBar.hidden { display: none; }
+  #onlineReconnectBtn.hidden, #onlineRematchBtn.hidden { display: none; }
+  .onlinePrivacyNote {
+    margin-top: 14px; font-size: 0.75em; line-height: 1.5; color: #8a95a5; text-align: center;
+  }
   #onlineStatusBar button { width: auto; margin: 0; padding: 6px 12px; font-size: 0.9em; flex-shrink: 0; }
   #modalChoices { display: flex; gap: 14px; justify-content: center; }
   .choiceBtn {
@@ -1034,6 +1044,8 @@
   <div id="gamePanel">
     <div id="onlineStatusBar" class="hidden">
       <span id="onlineStatusBarText"></span>
+      <button type="button" id="onlineReconnectBtn" class="hidden">Reconnect</button>
+      <button type="button" id="onlineRematchBtn" class="hidden">Rematch</button>
       <button type="button" id="onlineLeaveBtn">Leave</button>
     </div>
     <div id="status">White to move</div>
@@ -1143,10 +1155,16 @@
       <button type="button" id="onlineJoinGoBtn">Join Room</button>
       <div id="onlineJoinStatus" class="onlineStatusText"></div>
     </div>
+
+    <div class="onlinePrivacyNote">
+      Games connect your browser directly to your opponent's, which means the two of you
+      can see each other's IP address. Play with people you're happy to share that with.
+    </div>
   </div>
 </div>
 
 <script src="game-core.js"></script>
+<script src="net-protocol.js"></script>
 <script>
 'use strict';
 
@@ -1158,6 +1176,11 @@ const { VALUES, THRESH, NAMES, FILES, inB, sqName, enemy, newPiece,
         cloneBoard, findKing, isAttacked, inCheck,
         pseudoMoves, applyMoveToBoard, legalMoves, allLegalMoves,
         nextEvolutionStage, applyMove: applyMoveCore } = GameCore;
+// net-protocol.js — the wire format for online play and the validation every peer
+// message has to survive. Also pure, also unit tested outside the browser.
+const { NET_PROTO_V, NET_SETTINGS, mulberry32, randomUint32, randomRoomId,
+        normalizeRoomCode, isSquareRef, saneMs, saneBoard,
+        saneClockConfig, saneOnlineConfig, pickOffered } = NetProtocol;
 const GLYPHS = {
   w: { K: '♔', Q: '♕', R: '♖', B: '♗', N: '♘', P: '♙' },
   b: { K: '♚', Q: '♛', R: '♜', B: '♝', N: '♞', P: '♟' }
@@ -1190,7 +1213,6 @@ let onlineMyColor = null;        // 'w' | 'b' — which side this browser plays
 let onlineRoomId = null;
 let onlinePeer = null;           // PeerJS Peer instance
 let onlineConn = null;           // PeerJS DataConnection to the other player
-let applyingRemoteState = false; // guards against re-broadcasting a state we just received
 
 // ---------- Theme ----------
 const EVO_STAGE = { P: 1, N: 2, B: 2, R: 3, Q: 4 }; // Arcade LV tag: evolution stage, 1-based
@@ -1395,8 +1417,16 @@ function clockTick() {
     clockTime[turn] = 0;
     clockRunning = false;
     renderClocks();
+    // Online, a client only ever calls its *own* flag: our copy of the opponent's clock
+    // also charges them for network latency and for time they spent in a modal, so it
+    // hits zero before theirs does. Theirs reports it, and both boards agree.
+    if (onlineActive && turn !== onlineMyColor) {
+      setOnlineStatusBarText('⏳ Opponent is out of time…');
+      return;
+    }
     flagSound();
     handleFlagFall(turn);
+    if (onlineActive) netSend({ type: 'flag' });
     return;
   }
   const wholeSec = Math.ceil(remaining / 1000);
@@ -1408,18 +1438,19 @@ function clockTick() {
 }
 
 function handleFlagFall(color) {
-  gameOver = true;
   const loser = color === 'w' ? 'White' : 'Black';
   const winner = color === 'w' ? 'Black' : 'White';
+  clockTime[color] = 0;
+  clockRunning = false;
   if (insufficientMaterial()) {
-    setStatus(`½ DRAW — ${loser} flagged, but ${winner} lacks material to checkmate`, 'gameover');
     logEvo(`${loser}'s flag fell — draw (opponent has insufficient mating material).`);
-    showGameOverOverlay('½', 'Draw', 'Time forfeit, insufficient material');
+    announceGameOver(`½ DRAW — ${loser} flagged, but ${winner} lacks material to checkmate`, 'gameover',
+      '½', 'Draw', 'Time forfeit, insufficient material');
   } else {
-    setStatus(`⏱ TIME — ${winner} wins on time!`, 'gameover');
     logEvo(`${loser} ran out of time. ${winner} wins.`);
-    showGameOverOverlay('⏱', 'Time Forfeit', `${winner} wins`);
+    announceGameOver(`⏱ TIME — ${winner} wins on time!`, 'gameover', '⏱', 'Time Forfeit', `${winner} wins`);
   }
+  renderClocks();
   render();
 }
 
@@ -1531,17 +1562,49 @@ function aiShouldGamble(piece, capturedType, base) {
 // callback nested inside playMove/resolveCapture/evolveChain is now a plain
 // descriptor the generator yields. This decides how to answer it — an AI
 // heuristic, or a modal — and resumes the generator with gen.next(answer).
-function runMove(m) {
+//
+// `replay` is set when we are re-running a move the opponent already made online:
+// { choices, clocks, hash }. Both clients run every move through this same reducer,
+// so the peer only ever sends what it *decided* (the move and its modal answers) —
+// never the resulting position. See netApplyRemoteMove.
+function runMove(m, replay) {
   pushHistory();              // snapshot full state for Undo (before any mutation)
-  if (getClockOn()) clockConsumeTurn(turn);
+  if (replay) {
+    // the mover's own reading of the clocks is authoritative for the move they just
+    // made — ours also charged them for network latency and any time spent in a modal
+    clockRunning = false;
+    if (replay.clocks && getClockOn()) clockTime = { w: replay.clocks.w, b: replay.clocks.b };
+    renderClocks();
+  } else if (getClockOn()) clockConsumeTurn(turn);
   inputLocked = true;
 
   const moveNumLabel = `${moveNum}. ${turn === 'w' ? '' : '… '}`;
   const pieceName = NAMES[board[m.from.r][m.from.c].t];
   const fromSq = sqName(m.from.r, m.from.c), toSq = sqName(m.to.r, m.to.c);
 
+  // Every modal answer this move needs, in the order the generator asks for them:
+  // recorded when we are the mover, replayed verbatim when the opponent was.
+  const choices = replay ? replay.choices : [];
+  let choiceIdx = 0;
+  const record = v => { choices.push(v); return v; };
+  // pickOffered keeps a replayed answer to one the reducer actually offered, so the
+  // wire can't promote a pawn into a second king or a piece that wasn't on the menu.
+  const recallFrom = options => pickOffered(options, choices[choiceIdx++]);
+  const recallFlag = () => !!choices[choiceIdx++];
+  // A move that opens a modal can sit unresolved for a while, and the whole thing only
+  // reaches the opponent once it finishes. Tell them what we're stuck on meanwhile.
+  const announceThinking = kind => { if (onlineActive && !replay) netSend({ type: 'thinking', kind }); };
+  // during a resumed game the whole move list is re-run at once, with no animation
+  const flashRoll = (win, text, cb) => (replay && replay.fast ? cb() : flashResult(win, text, cb));
+  const flashEvo = (r, c, cb) => (replay && replay.fast ? cb() : flashEvolve(r, c, cb));
+
   const core = { board, turn, ep, moveNum, halfmoveClock, captured };
-  const gen = applyMoveCore(core, m, { evolutionOn: getEvolutionOn(), gambleOn: getGambleOn() });
+  const gen = applyMoveCore(core, m, {
+    evolutionOn: getEvolutionOn(), gambleOn: getGambleOn(),
+    // online, the dice come from a seed both sides agreed on at connect time, so the
+    // roll is reproduced rather than reported — neither client is trusted for it
+    rng: onlineActive && netRng ? netRng : Math.random
+  });
 
   function finish(result) {
     board = result.board;
@@ -1559,7 +1622,26 @@ function runMove(m) {
     checkGameEnd();
     if (!gameOver && getClockOn()) startClockFor(turn); else renderClocks();
     maybeAIMove();
-    if (onlineActive && !applyingRemoteState) netSend({ type: 'state', snapshot: snapshotState() });
+    if (onlineActive) {
+      const hash = positionKeys[positionKeys.length - 1];
+      const entry = {
+        from: { r: m.from.r, c: m.from.c }, to: { r: m.to.r, c: m.to.c },
+        choices: choices.slice(), clocks: { w: clockTime.w, b: clockTime.b }, hash
+      };
+      netLogMove(entry);
+      if (!replay) {
+        netSend(Object.assign({ type: 'move', seq: netSeq }, entry));
+      } else if (replay.hash && replay.hash !== hash) {
+        // both sides ran the same move through the same reducer and disagree on the
+        // result — a bug or a tampered client; either way, stop rather than play on
+        netDesync('the two boards no longer match');
+        return;
+      }
+      netSeq++;
+      // clears any transient notice (a declined rule change, an opponent whose clock
+      // ran out on our copy but not on theirs) now that play has moved on
+      if (netPhase === 'playing') updateOnlineStatusBar();
+    }
   }
 
   function step(input) {
@@ -1579,12 +1661,16 @@ function runMove(m) {
         break;
 
       case 'gamble':
-        if (ev.color === getAIColor()) step(aiShouldGamble(ev.piece, ev.capturedType, ev.base));
-        else askGamble({ t: ev.piece.t }, { t: ev.capturedType }, ev.base, () => step(true), () => step(false));
+        if (replay) step(recallFlag());
+        else if (ev.color === getAIColor()) step(record(aiShouldGamble(ev.piece, ev.capturedType, ev.base)));
+        else {
+          announceThinking('gamble');
+          askGamble({ t: ev.piece.t }, { t: ev.capturedType }, ev.base, () => step(record(true)), () => step(record(false)));
+        }
         break;
 
       case 'gambleRolled':
-        flashResult(ev.win, ev.win ? `🎲 WIN!  +${ev.base * 2}` : '💀 BUST!', () => step());
+        flashRoll(ev.win, ev.win ? `🎲 WIN!  +${ev.base * 2}` : '💀 BUST!', () => step());
         break;
 
       case 'captureBanked':
@@ -1600,8 +1686,12 @@ function runMove(m) {
         break;
 
       case 'promotion':
-        if (ev.color === getAIColor()) step('Q');
-        else askChoice(`${ev.color === 'w' ? 'White' : 'Black'} Pawn promotes! Choose:`, ev.options, ev.color, choice => step(choice));
+        if (replay) step(recallFrom(ev.options));
+        else if (ev.color === getAIColor()) step(record('Q'));
+        else {
+          announceThinking('promotion');
+          askChoice(`${ev.color === 'w' ? 'White' : 'Black'} Pawn promotes! Choose:`, ev.options, ev.color, choice => step(record(choice)));
+        }
         break;
 
       case 'promoted':
@@ -1610,13 +1700,17 @@ function runMove(m) {
         break;
 
       case 'evolutionChoice':
-        if (ev.color === getAIColor()) step(aiPickEvolution(ev.square.r, ev.square.c));
-        else askChoice(`${ev.color === 'w' ? 'White' : 'Black'} Pawn evolves! Choose:`, ev.options, ev.color, choice => step(choice));
+        if (replay) step(recallFrom(ev.options));
+        else if (ev.color === getAIColor()) step(record(aiPickEvolution(ev.square.r, ev.square.c)));
+        else {
+          announceThinking('evolution');
+          askChoice(`${ev.color === 'w' ? 'White' : 'Black'} Pawn evolves! Choose:`, ev.options, ev.color, choice => step(record(choice)));
+        }
         break;
 
       case 'evolved':
         logEvo(`${sqName(ev.square.r, ev.square.c)}: ${describeEvolution(ev.from, ev.to)}`);
-        flashEvolve(ev.square.r, ev.square.c, () => step());
+        flashEvo(ev.square.r, ev.square.c, () => step());
         break;
     }
   }
@@ -1631,6 +1725,7 @@ function announceGameOver(statusText, statusClass, icon, title, subtitle) {
   setStatus(statusText, statusClass);
   showGameOverOverlay(icon, title, subtitle);
   lastGameOverInfo = { statusText, statusClass, icon, title, subtitle };
+  if (onlineActive) refreshOnlineRematchBtn(); // the host can offer another game now
 }
 
 function checkGameEnd() {
@@ -1749,27 +1844,40 @@ function logEvo(text) {
   log.scrollTop = log.scrollHeight;
 }
 
+// Black sits behind their own pieces online. Done by walking the squares in reverse
+// rather than with a CSS rotation, because .piece.evolving animates `transform` and a
+// counter-rotation there would be clobbered mid-animation.
+function boardFlipped() {
+  return onlineActive && onlineMyColor === 'b';
+}
+
 function render() {
   if (setupMode) return renderSetupBoard();
   const boardEl = document.getElementById('board');
   boardEl.innerHTML = '';
   const checkedKing = inCheck(board, turn) && !gameOver ? findKing(board, turn) : null;
+  const flip = boardFlipped();
+  document.body.classList.toggle('boardFlipped', flip);
 
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
+  // dr/dc walk the screen; r/c stay the real board coordinates, so everything below
+  // (and every click handler) keeps working in board space
+  for (let dr = 0; dr < 8; dr++) {
+    for (let dc = 0; dc < 8; dc++) {
+      const r = flip ? 7 - dr : dr;
+      const c = flip ? 7 - dc : dc;
       const sq = document.createElement('div');
       sq.className = `sq ${(r + c) % 2 === 0 ? 'light' : 'dark'}`;
       sq.dataset.r = r;
       sq.dataset.c = c;
 
-      // coordinates
-      if (r === 7) {
+      // coordinates — labels ride the bottom and left edges of the screen, not the board
+      if (dr === 7) {
         const f = document.createElement('span');
         f.className = 'coord file';
         f.textContent = FILES[c];
         sq.appendChild(f);
       }
-      if (c === 0) {
+      if (dc === 0) {
         const rk = document.createElement('span');
         rk.className = 'coord rank';
         rk.textContent = 8 - r;
@@ -2080,34 +2188,131 @@ function getEvolutionOn() {
 }
 
 // ---------- Online PvP (WebRTC via PeerJS) ----------
-const NET_PROTO_V = 1;
+// Trust model: there is no server, so the peer is not trusted with our position.
+// Nothing off the wire is written into the game directly — the peer sends the move it
+// made and the modal answers it gave, we re-derive the result ourselves through the
+// same reducer, and we reject anything that isn't legal on *our* board. That is what
+// keeps a modified client from writing arbitrary state (or arbitrary markup) into
+// this page. Everything below validates before it acts.
 let onlineDesiredColor = 'random'; // host's pre-connection side choice
-let pendingRuleChange = null; // host only: { setting, oldValue, newValue } while awaiting guest's confirmation
+let pendingRuleChange = null; // host only: { setting, oldValue, newValue, clockCfg } while awaiting guest's confirmation
 let PeerCtor = null;
+let peerJsLoading = null;
+// idle | hosting | awaiting-guest | connecting | handshaking | playing | interrupted | closed
+let netPhase = 'idle';
+let netSeq = 0;      // moves applied so far; both sides count and must agree
+let netRng = null;   // seeded per game, so both clients roll the same dice
+let netConnectTimer = null;
+// Everything that has happened since the opening position, in order: the moves and the
+// rule changes agreed along the way. Both sides keep it, and it is what lets a player
+// who drops out be handed the game back — replayed, not described.
+let netGameLog = [];
+let netStartCfg = null;  // the config this game began from, for the same reason
+let netRematch = null;   // host only: a rematch offer awaiting the guest's answer
+let netLastSeen = 0;
+let netHeartbeatId = null;
+let netUnresponsive = false;
+let netReconnecting = false;
+let netReconnectCode = null; // survives teardown, so a dropped guest can walk back in
+const NET_CONNECT_TIMEOUT_MS = 15000;
+const NET_PING_MS = 5000;
+const NET_SILENT_MS = 20000;
 
-async function ensurePeerJs() {
-  if (!PeerCtor) {
-    const mod = await import('https://esm.sh/peerjs@1.5.4');
-    PeerCtor = mod.Peer || mod.default;
+function netLogMove(entry) { netGameLog.push(Object.assign({ kind: 'move' }, entry)); }
+function netLogRule(setting, value, clockCfg) { netGameLog.push({ kind: 'rule', setting, value, clockCfg }); }
+
+// A dropped WebRTC connection often doesn't announce itself — the channel just goes
+// quiet. A ping every few seconds turns that silence into something we can show.
+function startHeartbeat() {
+  stopHeartbeat();
+  netLastSeen = Date.now();
+  netUnresponsive = false;
+  netHeartbeatId = setInterval(() => {
+    if (netPhase !== 'playing') return;
+    netSend({ type: 'ping' });
+    if (!netUnresponsive && Date.now() - netLastSeen > NET_SILENT_MS) {
+      netUnresponsive = true;
+      setOnlineStatusBarText('⚠ No response from your opponent…');
+    }
+  }, NET_PING_MS);
+}
+
+function stopHeartbeat() {
+  if (netHeartbeatId) { clearInterval(netHeartbeatId); netHeartbeatId = null; }
+  netUnresponsive = false;
+}
+
+// any traffic at all means they're still there
+function netNoteTraffic() {
+  netLastSeen = Date.now();
+  if (netUnresponsive) {
+    netUnresponsive = false;
+    if (netPhase === 'playing') updateOnlineStatusBar();
   }
-  return PeerCtor;
+}
+
+// PeerJS does not reliably raise an error for a room that isn't there — the connection
+// simply never opens. Without a deadline of our own the player sits on "Connecting…"
+// forever, with the form disabled behind them.
+function startConnectTimeout(onGiveUp) {
+  clearConnectTimeout();
+  netConnectTimer = setTimeout(() => {
+    netConnectTimer = null;
+    if (netPhase === 'hosting' || netPhase === 'connecting' || netPhase === 'handshaking') {
+      // tear down first: teardownNet resets the phase, and onGiveUp may want to set it
+      // to something meaningful (a failed reconnect leaves the game interrupted, not idle)
+      teardownNet();
+      enableOnlineFormControls();
+      onGiveUp();
+    }
+  }, NET_CONNECT_TIMEOUT_MS);
+}
+
+function clearConnectTimeout() {
+  if (netConnectTimer) { clearTimeout(netConnectTimer); netConnectTimer = null; }
+}
+
+// PeerJS is vendored under vendor/ rather than pulled from a CDN at run time: a
+// dynamic import can't carry an integrity hash, so whatever the CDN served would have
+// been script on this page with full access to the origin. See vendor/README.md.
+// Still loaded lazily — a local game never pays for it.
+function ensurePeerJs() {
+  if (PeerCtor) return Promise.resolve(PeerCtor);
+  if (!peerJsLoading) {
+    peerJsLoading = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'vendor/peerjs-1.5.4.min.js';
+      s.onload = () => window.Peer ? resolve(window.Peer) : reject(new Error('peerjs loaded but exported nothing'));
+      s.onerror = () => reject(new Error('could not load vendor/peerjs-1.5.4.min.js'));
+      document.head.appendChild(s);
+    }).then(P => { PeerCtor = P; return P; })
+      .catch(err => { peerJsLoading = null; throw err; }); // let the next attempt retry
+  }
+  return peerJsLoading;
 }
 
 function netSend(msg) {
   if (onlineConn && onlineConn.open) onlineConn.send(msg);
 }
 
-function buildOnlineConfig(hostColor, guestColor) {
+function currentClockConfig() {
   return {
+    time: { w: clockTime.w, b: clockTime.b },
+    inc: { w: clockIncSetting.w, b: clockIncSetting.b },
+    mode: incrementMode === 'delay' ? 'delay' : 'fischer',
+    thresholdMs: incrementThresholdMs
+  };
+}
+
+function buildOnlineConfig(hostColor, guestColor, seed) {
+  return {
+    v: NET_PROTO_V, seed,
     board: cloneBoard(board),
     sideToMove: turn,
     hostColor, guestColor,
     evolutionOn: getEvolutionOn(),
     gambleOn: getGambleOn(),
-    clock: getClockOn()
-      ? { on: true, time: { w: clockTime.w, b: clockTime.b }, inc: { w: clockIncSetting.w, b: clockIncSetting.b },
-          mode: incrementMode, thresholdMs: incrementThresholdMs }
-      : { on: false }
+    clock: getClockOn() ? Object.assign({ on: true }, currentClockConfig()) : { on: false }
   };
 }
 
@@ -2117,6 +2322,15 @@ function applyOnlineConfig(cfg) {
   document.getElementById('gambleToggle').checked = cfg.gambleOn;
   document.getElementById('clockToggle').value = cfg.clock.on ? 'on' : 'off';
   onlineActive = true;
+  netPhase = 'playing';
+  clearConnectTimeout();
+  netSeq = 0;
+  netGameLog = [];
+  netStartCfg = cfg;
+  netRematch = null;
+  netReconnecting = false;
+  netRng = mulberry32(cfg.seed);
+  startHeartbeat();
   closeOnlineOverlay();
   initGame(cfg.board, cfg.sideToMove);
   if (cfg.clock.on) {
@@ -2164,16 +2378,29 @@ function describeRuleChange(setting, value) {
 
 // Applies an already-agreed-upon rule change (both online peers call this with identical
 // arguments once negotiation succeeds, and local non-online play calls it directly).
-function applyRuleChangeLocally(setting, value) {
+function applyRuleChangeLocally(setting, value, clockCfg) {
   setRuleControlValue(setting, value);
   refreshRulesVisibility();
   if (setting === 'evolutionOn') render();
   if (setting === 'gambleOn') updateSwissMeta();
   if (setting === 'clockOn') {
-    if (value) { ensureAudio(); if (!gameOver) startClockFor(turn); }
-    else pauseClock();
+    if (value) {
+      // Online the host's clock numbers travel with the proposal: without them each
+      // side would start the newly-enabled clock from its own settings panel, and the
+      // two players would silently be on different time controls.
+      if (clockCfg) {
+        clockTime = { w: clockCfg.time.w, b: clockCfg.time.b };
+        clockIncSetting = { w: clockCfg.inc.w, b: clockCfg.inc.b };
+        incrementMode = clockCfg.mode;
+        incrementThresholdMs = clockCfg.thresholdMs;
+      }
+      ensureAudio();
+      if (!gameOver) startClockFor(turn);
+    } else pauseClock();
   }
   renderClocks();
+  // part of the game's history, so a player who reconnects gets the rules they left under
+  if (onlineActive) netLogRule(setting, value, clockCfg || null);
   const label = setting === 'evolutionOn' ? 'Evolution' : setting === 'gambleOn' ? 'Gambling' : 'Clock';
   if (history.length > 0) logEvo(`${label} turned ${value ? 'ON' : 'OFF'}.`);
 }
@@ -2189,21 +2416,27 @@ function proposeOnlineRuleChange(setting, newValue) {
     setTimeout(() => { if (onlineActive) updateOnlineStatusBar(); }, 2500);
     return;
   }
-  pendingRuleChange = { setting, oldValue, newValue };
+  const clockCfg = setting === 'clockOn' && newValue ? currentClockConfig() : null;
+  pendingRuleChange = { setting, oldValue, newValue, clockCfg };
   setRuleControlValue(setting, oldValue); // nothing actually changes until the guest agrees
   setRuleControlsDisabled(true);
   inputLocked = true;
   pauseClock();
   render();
   setOnlineStatusBarText(`⏸ Proposing to ${describeRuleChange(setting, newValue)} — waiting for opponent…`);
-  netSend({ type: 'ruleChangeRequest', setting, value: newValue });
+  netSend({ type: 'ruleChangeRequest', setting, value: newValue, clock: clockCfg });
 }
 
 function askRuleChangeConfirm(setting, value, cb) {
+  askOnlineConfirm(`Host wants to ${describeRuleChange(setting, value)}`, cb);
+}
+
+// Agree/Decline for anything the host proposes mid-session.
+function askOnlineConfirm(title, cb) {
   const overlay = document.getElementById('modalOverlay');
   const gen = gameId;
   document.getElementById('modal').dataset.mood = 'gamble';
-  document.getElementById('modalTitle').textContent = `Host wants to ${describeRuleChange(setting, value)}`;
+  document.getElementById('modalTitle').textContent = title;
   const box = document.getElementById('modalChoices');
   box.innerHTML = '';
 
@@ -2223,71 +2456,196 @@ function askRuleChangeConfirm(setting, value, cb) {
   modalKeyMap = { y: () => agree.click(), n: () => decline.click(), Escape: () => decline.click() };
 }
 
-function onNetMessage(msg) {
+// The opponent names two squares and lists the answers they gave to their own modals.
+// We look that move up among the ones *our* board says are legal and replay it, so an
+// illegal, out-of-turn or invented move simply has nothing to match against.
+function netApplyRemoteMove(msg) {
+  if (gameOver) return;
+  if (!isSquareRef(msg.from) || !isSquareRef(msg.to)) return netDesync('opponent sent a malformed move');
+  if (!Number.isInteger(msg.seq) || msg.seq !== netSeq) return netDesync(`moves arrived out of order (expected #${netSeq}, got #${msg.seq})`);
+  if (turn !== enemy(onlineMyColor)) return netDesync('opponent tried to move out of turn');
+  const mv = allLegalMoves(board, turn, ep).find(x =>
+    x.from.r === msg.from.r && x.from.c === msg.from.c &&
+    x.to.r === msg.to.r && x.to.c === msg.to.c);
+  if (!mv) return netDesync('opponent sent a move that is not legal here');
+
+  runMove(mv, {
+    choices: Array.isArray(msg.choices) ? msg.choices.slice(0, 32) : [],
+    clocks: msg.clocks ? { w: saneMs(msg.clocks.w, clockTime.w), b: saneMs(msg.clocks.b, clockTime.b) } : null,
+    hash: typeof msg.hash === 'string' ? msg.hash : null
+  });
+}
+
+// Re-runs an entire game from its opening position for a player who dropped out and
+// came back. Every move goes through exactly the same legality check a live one does —
+// a resume is not a shortcut past validation, just the same path without the pauses.
+function netReplayGameLog(entries) {
+  if (!Array.isArray(entries)) { netDesync('the resumed game had no history'); return false; }
+  for (const e of entries) {
+    if (netPhase === 'closed') return false;
+    if (!e || typeof e !== 'object') { netDesync('the resumed history was malformed'); return false; }
+
+    if (e.kind === 'rule') {
+      if (!NET_SETTINGS.includes(e.setting) || typeof e.value !== 'boolean') {
+        netDesync('the resumed history had an unknown rule change');
+        return false;
+      }
+      applyRuleChangeLocally(e.setting, e.value, e.clockCfg ? saneClockConfig(e.clockCfg) : null);
+      continue;
+    }
+
+    if (gameOver) break;
+    if (!isSquareRef(e.from) || !isSquareRef(e.to)) { netDesync('the resumed history was malformed'); return false; }
+    const mv = allLegalMoves(board, turn, ep).find(x =>
+      x.from.r === e.from.r && x.from.c === e.from.c && x.to.r === e.to.r && x.to.c === e.to.c);
+    if (!mv) { netDesync('the resumed history did not replay cleanly'); return false; }
+    runMove(mv, {
+      fast: true,
+      choices: Array.isArray(e.choices) ? e.choices.slice(0, 32) : [],
+      clocks: e.clocks ? { w: saneMs(e.clocks.w, clockTime.w), b: saneMs(e.clocks.b, clockTime.b) } : null,
+      hash: typeof e.hash === 'string' ? e.hash : null
+    });
+  }
+  return netPhase !== 'closed';
+}
+
+// Hands a rejoining player everything they need to rebuild the game themselves.
+function sendResumePayload() {
+  netSend({ type: 'resume', cfg: netStartCfg, log: netGameLog });
+}
+
+function onNetMessage(raw) {
+  netNoteTraffic();
+  let msg = raw;
+  if (typeof msg === 'string') { try { msg = JSON.parse(msg); } catch (e) { return; } }
+  if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return;
+  try {
+    handleNetMessage(msg);
+  } catch (e) {
+    // whatever the peer sent, it must not be able to leave us wedged half-applied
+    console.error('online: could not handle message', msg.type, e);
+    netDesync('the opponent sent something we could not process');
+  }
+}
+
+function handleNetMessage(msg) {
   switch (msg.type) {
+    case 'ping':
+      return; // netNoteTraffic already did the only work a ping needs
+
     case 'hello': {
+      // only ever answered while actually waiting for a hello — a stray one mid-match
+      // would otherwise re-roll the colours and restart the game
       if (onlineRole !== 'host') return;
+      if (netPhase !== 'handshaking' && netPhase !== 'resuming') return;
       if (msg.v !== NET_PROTO_V) {
         netSend({ type: 'hello-ack', ok: false });
         setOnlineHostStatus('Opponent is running an incompatible version of Chess 2.0.', true);
         return;
       }
-      const flip = onlineDesiredColor === 'random' ? (Math.random() < 0.5 ? 'w' : 'b') : onlineDesiredColor;
+      // someone rejoining an interrupted game gets it handed back, not restarted
+      if (netPhase === 'resuming') {
+        netSend({ type: 'hello-ack', ok: true });
+        sendResumePayload();
+        netPhase = 'playing';
+        inputLocked = false;
+        setRuleControlsDisabled(false);
+        startHeartbeat();
+        logEvo('Opponent reconnected.');
+        if (!gameOver && getClockOn()) startClockFor(turn); else renderClocks();
+        updateOnlineStatusBar();
+        render();
+        return;
+      }
+      const flip = onlineDesiredColor === 'random' ? (randomUint32() % 2 ? 'w' : 'b') : onlineDesiredColor;
       onlineMyColor = flip;
-      const guestColor = enemy(flip);
-      const cfg = buildOnlineConfig(flip, guestColor);
+      // both players contribute to the seed, so neither one picks the game's dice alone
+      const seed = (randomUint32() ^ ((Number(msg.seed) || 0) >>> 0)) >>> 0;
+      const cfg = buildOnlineConfig(flip, enemy(flip), seed);
       netSend({ type: 'hello-ack', ok: true });
       netSend({ type: 'config', cfg });
       applyOnlineConfig(cfg);
       break;
     }
     case 'hello-ack':
-      if (onlineRole !== 'guest') return;
+      if (onlineRole !== 'guest' || netPhase !== 'handshaking') return;
       if (!msg.ok) {
         setOnlineJoinStatus('Host rejected the connection (version mismatch). Ask them to refresh.', true);
-        leaveOnlineGame();
+        teardownNet();
+        enableOnlineFormControls();
         return;
       }
       setOnlineJoinStatus('Connected — waiting for the host to start the game…');
       break;
-    case 'config':
-      if (onlineRole !== 'guest') return;
-      onlineMyColor = msg.cfg.guestColor;
-      applyOnlineConfig(msg.cfg);
+    case 'busy':
+      if (onlineRole !== 'guest' || netPhase === 'playing') return;
+      setOnlineJoinStatus('That room already has two players.', true);
+      teardownNet();
+      enableOnlineFormControls();
       break;
-    case 'state':
-      applyingRemoteState = true;
-      restoreSnapshot(msg.snapshot);
-      render();
-      if (gameOver) {
-        clockRunning = false;
-        if (msg.snapshot.gameOverInfo) {
-          const gi = msg.snapshot.gameOverInfo;
-          setStatus(gi.statusText, gi.statusClass);
-          showGameOverOverlay(gi.icon, gi.title, gi.subtitle);
-        }
-        renderClocks();
-      } else {
-        setTurnStatus();
-        if (getClockOn()) startClockFor(turn); else renderClocks();
+    case 'config': {
+      if (onlineRole !== 'guest' || netPhase !== 'handshaking') return;
+      const cfg = saneOnlineConfig(msg.cfg);
+      if (!cfg) {
+        setOnlineJoinStatus("The host sent a game setup we couldn't read. Ask them to refresh.", true);
+        teardownNet();
+        enableOnlineFormControls();
+        return;
       }
-      applyingRemoteState = false;
+      onlineMyColor = cfg.guestColor;
+      applyOnlineConfig(cfg);
       break;
+    }
+    case 'resume': {
+      if (onlineRole !== 'guest' || netPhase !== 'handshaking') return;
+      const cfg = saneOnlineConfig(msg.cfg);
+      if (!cfg) {
+        setOnlineJoinStatus("The host sent a game we couldn't rebuild. Ask them to refresh.", true);
+        teardownNet();
+        enableOnlineFormControls();
+        return;
+      }
+      onlineMyColor = cfg.guestColor;
+      applyOnlineConfig(cfg);
+      if (!netReplayGameLog(msg.log)) return;
+      logEvo('Reconnected — game resumed.');
+      updateOnlineStatusBar();
+      break;
+    }
+    case 'move':
+      if (netPhase !== 'playing') return;
+      netApplyRemoteMove(msg);
+      break;
+    case 'thinking': {
+      if (netPhase !== 'playing' || gameOver) return;
+      const what = { gamble: '🎲 Opponent is deciding whether to gamble…',
+                     promotion: '♛ Opponent is choosing a promotion…',
+                     evolution: '⚡ Opponent is choosing an evolution…' }[msg.kind];
+      if (what) setOnlineStatusBarText(what);
+      break;
+    }
     case 'resign':
-      applyResignEffects(msg.color);
+      if (netPhase !== 'playing' || gameOver) return;
+      applyResignEffects(enemy(onlineMyColor)); // a peer can only ever resign itself
+      break;
+    case 'flag':
+      if (netPhase !== 'playing' || gameOver || !getClockOn()) return;
+      handleFlagFall(enemy(onlineMyColor));     // ...and only ever call its own flag
       break;
     case 'ruleChangeRequest': {
-      if (onlineRole !== 'guest') return;
+      if (onlineRole !== 'guest' || netPhase !== 'playing') return;
+      if (!NET_SETTINGS.includes(msg.setting) || typeof msg.value !== 'boolean') return;
       // guest is mid-resolving their own move (or the game just ended) — can't negotiate right now
       if (inputLocked || gameOver || document.getElementById('modalOverlay').classList.contains('open')) {
         netSend({ type: 'ruleChangeResponse', setting: msg.setting, value: msg.value, accepted: false, busy: true });
         return;
       }
+      const clockCfg = msg.setting === 'clockOn' && msg.value ? saneClockConfig(msg.clock) : null;
       inputLocked = true;
       pauseClock();
       render();
       askRuleChangeConfirm(msg.setting, msg.value, accepted => {
-        if (accepted) applyRuleChangeLocally(msg.setting, msg.value);
+        if (accepted) applyRuleChangeLocally(msg.setting, msg.value, clockCfg);
         netSend({ type: 'ruleChangeResponse', setting: msg.setting, value: msg.value, accepted });
         inputLocked = false;
         if (!gameOver && getClockOn()) startClockFor(turn); else renderClocks();
@@ -2295,12 +2653,13 @@ function onNetMessage(msg) {
       break;
     }
     case 'ruleChangeResponse': {
-      if (onlineRole !== 'host' || !pendingRuleChange) return;
-      const { setting, newValue } = pendingRuleChange;
+      if (onlineRole !== 'host' || netPhase !== 'playing' || !pendingRuleChange) return;
+      const { setting, newValue, clockCfg } = pendingRuleChange;
+      if (msg.setting !== setting || msg.value !== newValue) return; // a stale or invented reply
       pendingRuleChange = null;
       setRuleControlsDisabled(false);
       if (msg.accepted) {
-        applyRuleChangeLocally(setting, newValue);
+        applyRuleChangeLocally(setting, newValue, clockCfg);
         updateOnlineStatusBar();
       } else {
         setOnlineStatusBarText(msg.busy ? 'Opponent is mid-move — try again in a moment.' : 'Opponent declined the change.');
@@ -2310,78 +2669,268 @@ function onNetMessage(msg) {
       if (!gameOver && getClockOn()) startClockFor(turn); else renderClocks();
       break;
     }
+    case 'rematchOffer':
+      if (onlineRole !== 'guest' || netPhase !== 'playing' || !gameOver) return;
+      askOnlineConfirm('Host wants a rematch — colours swap', accepted => {
+        netSend({ type: 'rematchResponse', accepted });
+      });
+      break;
+    case 'rematchResponse': {
+      if (onlineRole !== 'host' || netPhase !== 'playing' || !netRematch) return;
+      netRematch = null;
+      if (msg.accepted) { startRematch(); return; }
+      setOnlineStatusBarText('Opponent declined the rematch.');
+      setTimeout(() => { if (onlineActive) updateOnlineStatusBar(); }, 2500);
+      refreshOnlineRematchBtn();
+      break;
+    }
+    case 'rematch': {
+      if (onlineRole !== 'guest' || netPhase !== 'playing') return;
+      const cfg = saneOnlineConfig(msg.cfg);
+      if (!cfg) return netDesync('the rematch setup could not be read');
+      onlineMyColor = cfg.guestColor;
+      applyOnlineConfig(cfg);
+      logEvo('Rematch — colours swapped.');
+      updateOnlineStatusBar();
+      break;
+    }
   }
 }
 
+// Same opening position and rules, swapped colours, fresh dice and fresh clocks.
+function startRematch() {
+  const prev = netStartCfg;
+  const myColor = enemy(onlineMyColor);
+  onlineMyColor = myColor;
+  const cfg = buildOnlineConfig(myColor, enemy(myColor), randomUint32());
+  cfg.board = cloneBoard(prev.board);
+  cfg.sideToMove = prev.sideToMove;
+  cfg.clock = prev.clock; // the times we started with, not what was left on the clocks
+  netSend({ type: 'rematch', cfg });
+  applyOnlineConfig(cfg);
+  logEvo('Rematch — colours swapped.');
+  updateOnlineStatusBar();
+}
+
+function refreshOnlineRematchBtn() {
+  const btn = document.getElementById('onlineRematchBtn');
+  if (!btn) return;
+  btn.classList.toggle('hidden', !(onlineActive && netPhase === 'playing' && gameOver && onlineRole === 'host'));
+  btn.disabled = !!netRematch;
+}
+
+function refreshOnlineReconnectBtn() {
+  const btn = document.getElementById('onlineReconnectBtn');
+  if (!btn) return;
+  btn.classList.toggle('hidden', !(netPhase === 'interrupted' && netReconnectCode));
+  btn.disabled = false;
+}
+
+// Something arrived that we can't reconcile with our own board. There is no authority
+// to appeal to, so stop the match rather than play on from a position we don't trust.
+function netDesync(reason) {
+  if (netPhase === 'closed') return;
+  netPhase = 'closed';
+  pendingRuleChange = null;
+  inputLocked = true;
+  clockRunning = false;
+  setRuleControlsDisabled(true);
+  setOnlineStatusBarText(`⚠ Online game stopped — ${reason}`);
+  logEvo(`Online game stopped — ${reason}.`);
+  try { if (onlineConn) onlineConn.close(); } catch (e) { /* already closed */ }
+  render();
+}
+
 function handleConnLost(err) {
+  if (netPhase === 'closed') return; // we already stopped the game and said why
   if (onlineActive) {
+    // A drop is not the end of the game any more: freeze it and keep everything needed
+    // to hand it back. The host holds the room open on the same code; the guest gets a
+    // Reconnect button. Either way nothing is lost while they're away.
+    stopHeartbeat();
     pendingRuleChange = null;
+    netRematch = null;
     inputLocked = true;
     clockRunning = false;
     setRuleControlsDisabled(true);
-    setOnlineStatusBarText('⚠ Opponent disconnected');
+    onlineConn = null;
+    if (onlineRole === 'host') {
+      netPhase = 'resuming';
+      setOnlineStatusBarText(`⚠ Opponent disconnected — they can rejoin with ${onlineRoomId}`);
+    } else {
+      netPhase = 'interrupted';
+      setOnlineStatusBarText('⚠ Disconnected — try reconnecting');
+    }
+    refreshOnlineRematchBtn();
+    refreshOnlineReconnectBtn();
     render();
   } else {
     const detail = err ? ` (${err.type || err.message || err})` : '';
     const msg = `Connection lost${detail}.`;
     if (onlineRole === 'host') setOnlineHostStatus(msg, true);
     else setOnlineJoinStatus(msg, true);
+    enableOnlineFormControls();
   }
 }
 
+// Turns an unwanted joiner away with a reason instead of just dropping them. The
+// connection may or may not have finished opening by the time we get here, so handle
+// both orderings — waiting only on 'open' misses one that is already open.
+function rejectConnection(c) {
+  const turnAway = () => {
+    try { c.send({ type: 'busy' }); } catch (e) { /* going away anyway */ }
+    setTimeout(() => { try { c.close(); } catch (e) { /* already closed */ } }, 500);
+  };
+  try {
+    if (c.open) turnAway(); else c.on('open', turnAway);
+  } catch (e) { /* nothing left to clean up */ }
+}
+
+// PeerJS emits 'disconnected' when we lose the *signalling* server; the data channel
+// to the opponent is unaffected, so reconnect quietly instead of ending the match.
+function attachPeerRecovery(peer) {
+  peer.on('disconnected', () => {
+    if (onlinePeer !== peer || peer.destroyed) return;
+    try { peer.reconnect(); } catch (e) { /* nothing more we can do from here */ }
+  });
+}
+
 function hostGame() {
+  teardownNet(); // never leave a previous attempt's peer alive behind us
   setOnlineHostStatus('Setting up room…');
   ensurePeerJs().then(Peer => {
     onlineRole = 'host';
-    onlineRoomId = 'chess2-' + Math.random().toString(36).slice(2, 8);
-    onlinePeer = new Peer(onlineRoomId);
-    onlinePeer.on('open', () => {
+    onlineRoomId = randomRoomId();
+    netPhase = 'hosting';
+    startConnectTimeout(() => setOnlineHostStatus("Couldn't reach the matchmaking server. Try again.", true));
+    const peer = new Peer(onlineRoomId);
+    onlinePeer = peer;
+    peer.on('open', () => {
+      if (onlinePeer !== peer) return; // a later attempt superseded this one
+      netPhase = 'awaiting-guest';
+      clearConnectTimeout(); // the room is up; waiting for an opponent has no deadline
       showOnlineCode(onlineRoomId);
       setOnlineHostStatus('Waiting for opponent to join…');
     });
-    onlinePeer.on('connection', c => {
+    peer.on('connection', c => {
+      if (onlinePeer !== peer) return;
+      // One opponent per room. A late joiner must never be able to displace the player
+      // we are already connected to, or restart a match that is under way. The one other
+      // moment we accept someone is when our opponent has dropped and the seat is empty.
+      if (onlineConn || (netPhase !== 'awaiting-guest' && netPhase !== 'resuming')) {
+        rejectConnection(c);
+        return;
+      }
+      if (netPhase !== 'resuming') netPhase = 'handshaking';
       onlineConn = c;
-      onlineConn.on('data', onNetMessage);
-      onlineConn.on('close', () => handleConnLost());
-      onlineConn.on('error', err => handleConnLost(err));
+      c.on('data', onNetMessage);
+      // guarded so a close event from a connection we have already let go can't
+      // overwrite the reason we let it go with a generic "connection lost"
+      c.on('close', () => { if (onlineConn === c) handleConnLost(); });
+      c.on('error', err => { if (onlineConn === c) handleConnLost(err); });
     });
-    onlinePeer.on('error', err => setOnlineHostStatus(`Connection error: ${err.type || err.message || err}`, true));
-    onlinePeer.on('disconnected', () => handleConnLost());
-  }).catch(err => setOnlineHostStatus(`Couldn't load networking (${err.message || err}). Check your connection.`, true));
+    peer.on('error', err => {
+      if (onlinePeer !== peer) return;
+      const type = err && err.type;
+      setOnlineHostStatus(type === 'unavailable-id'
+        ? 'That room code is already taken — try creating the room again.'
+        : `Connection error: ${type || err.message || err}`, true);
+      enableOnlineFormControls();
+    });
+    attachPeerRecovery(peer);
+  }).catch(err => {
+    setOnlineHostStatus(`Couldn't load networking (${err.message || err}). Check your connection.`, true);
+    enableOnlineFormControls();
+  });
 }
 
-function joinGame(code) {
-  setOnlineJoinStatus('Connecting…');
+function joinGame(code, isReconnect) {
+  teardownNet();
+  netReconnecting = !!isReconnect;
+  netReconnectCode = code;
+  if (isReconnect) setOnlineStatusBarText('Reconnecting…');
+  else setOnlineJoinStatus('Connecting…');
   ensurePeerJs().then(Peer => {
     onlineRole = 'guest';
     onlineRoomId = code;
-    onlinePeer = new Peer();
-    onlinePeer.on('open', () => {
-      onlineConn = onlinePeer.connect(code, { reliable: true });
-      onlineConn.on('open', () => netSend({ type: 'hello', v: NET_PROTO_V }));
-      onlineConn.on('data', onNetMessage);
-      onlineConn.on('close', () => handleConnLost());
-      onlineConn.on('error', err => handleConnLost(err));
+    netPhase = 'connecting';
+    startConnectTimeout(() => reportJoinFailure('No answer from that room — the host may have left.'));
+    const peer = new Peer();
+    onlinePeer = peer;
+    peer.on('open', () => {
+      if (onlinePeer !== peer) return;
+      const conn = peer.connect(code, { reliable: true });
+      onlineConn = conn;
+      conn.on('open', () => {
+        if (onlineConn !== conn) return;
+        netPhase = 'handshaking';
+        netSend({ type: 'hello', v: NET_PROTO_V, seed: randomUint32() });
+      });
+      conn.on('data', onNetMessage);
+      conn.on('close', () => { if (onlineConn === conn) handleConnLost(); });
+      conn.on('error', err => { if (onlineConn === conn) handleConnLost(err); });
     });
-    onlinePeer.on('error', err => setOnlineJoinStatus(`Could not connect — check the code and try again. (${err.type || err.message || err})`, true));
-    onlinePeer.on('disconnected', () => handleConnLost());
-  }).catch(err => setOnlineJoinStatus(`Couldn't load networking (${err.message || err}). Check your connection.`, true));
+    peer.on('error', err => {
+      if (onlinePeer !== peer) return;
+      const type = err && err.type;
+      reportJoinFailure(type === 'peer-unavailable'
+        ? 'No room with that code — check it and try again.'
+        : `Could not connect — ${type || err.message || err}`);
+    });
+    attachPeerRecovery(peer);
+  }).catch(err => {
+    reportJoinFailure(`Couldn't load networking (${err.message || err}). Check your connection.`);
+  });
 }
 
-function leaveOnlineGame() {
-  try { if (onlineConn) onlineConn.close(); } catch (e) { /* already closed */ }
-  try { if (onlinePeer) onlinePeer.destroy(); } catch (e) { /* already destroyed */ }
+// A failed reconnect belongs on the status bar behind the board, not in the join dialog
+// the player never opened — and it has to leave the Reconnect button usable.
+function reportJoinFailure(text) {
+  if (netReconnecting) {
+    netPhase = 'interrupted';
+    setOnlineStatusBarText(`⚠ ${text}`);
+    refreshOnlineReconnectBtn();
+  } else {
+    setOnlineJoinStatus(text, true);
+  }
+  enableOnlineFormControls();
+}
+
+// Drops the connection and the room code, and forgets every scrap of session state.
+// Called before starting a new attempt too, so a failed one can't leave a live Peer
+// (and its handlers) around to clobber the next one.
+function teardownNet() {
+  clearConnectTimeout();
+  stopHeartbeat();
+  // Let go of the references *before* closing: close() can emit 'close' synchronously,
+  // and the handlers have to be able to see that this connection is already discarded —
+  // otherwise a teardown we did on purpose comes back as "Connection lost".
+  const conn = onlineConn, peer = onlinePeer;
   onlineConn = null;
   onlinePeer = null;
+  try { if (conn) conn.close(); } catch (e) { /* already closed */ }
+  try { if (peer) peer.destroy(); } catch (e) { /* already destroyed */ }
   onlineActive = false;
   onlineRole = null;
   onlineMyColor = null;
   onlineRoomId = null;
+  pendingRuleChange = null;
+  netPhase = 'idle';
+  netSeq = 0;
+}
+
+function leaveOnlineGame() {
+  teardownNet();
+  netReconnecting = false;
+  netReconnectCode = null;
+  netGameLog = [];
+  netStartCfg = null;
   inputLocked = false;
   lockOnlineControls(false);
   hideOnlineStatusBar();
   refreshUndoBtn();
   refreshResignBtn();
+  render();
 }
 
 // ---------- Online overlay UI ----------
@@ -2398,6 +2947,10 @@ function resetOnlineOverlayUI() {
   setOnlineHostStatus('');
   setOnlineJoinStatus('');
   document.getElementById('onlineJoinCodeInput').value = '';
+  enableOnlineFormControls();
+}
+// re-enabled on every failure path too, so a bad code doesn't leave the form dead
+function enableOnlineFormControls() {
   document.getElementById('onlineHostCreateBtn').disabled = false;
   document.getElementById('onlineSideSelect').disabled = false;
   document.getElementById('onlineJoinGoBtn').disabled = false;
@@ -2429,6 +2982,8 @@ function updateOnlineStatusBar() {
   const colorLabel = onlineMyColor === 'w' ? '⚪ White' : '⚫ Black';
   setOnlineStatusBarText(`🌐 Online — you are ${colorLabel} · Room ${onlineRoomId}`);
   bar.classList.remove('hidden');
+  refreshOnlineRematchBtn();
+  refreshOnlineReconnectBtn();
 }
 function setOnlineStatusBarText(text) {
   document.getElementById('onlineStatusBarText').textContent = text;
@@ -2438,7 +2993,16 @@ function hideOnlineStatusBar() {
 }
 
 document.getElementById('playOnlineBtn').addEventListener('click', () => { ensureAudio(); openOnlineOverlay(); });
-document.getElementById('onlineCloseBtn').addEventListener('click', closeOnlineOverlay);
+document.getElementById('onlineCloseBtn').addEventListener('click', () => {
+  // Dismissing the dialog before a game starts has to actually give the room code up:
+  // otherwise it stays registered and joinable for as long as this tab is open, and a
+  // stranger with the code could wipe out whatever we went back to playing.
+  if (!onlineActive) {
+    teardownNet();
+    resetOnlineOverlayUI();
+  }
+  closeOnlineOverlay();
+});
 document.getElementById('onlineTabHostBtn').addEventListener('click', () => switchOnlineTab('host'));
 document.getElementById('onlineTabJoinBtn').addEventListener('click', () => switchOnlineTab('join'));
 document.getElementById('onlineHostCreateBtn').addEventListener('click', () => {
@@ -2457,16 +3021,30 @@ document.getElementById('onlineCodeCopyBtn').addEventListener('click', () => {
   }).catch(() => {});
 });
 document.getElementById('onlineJoinGoBtn').addEventListener('click', () => {
-  const code = document.getElementById('onlineJoinCodeInput').value.trim();
-  if (!code) { setOnlineJoinStatus('Enter a room code.', true); return; }
+  const code = normalizeRoomCode(document.getElementById('onlineJoinCodeInput').value);
+  if (!code) { setOnlineJoinStatus('That doesn’t look like a room code.', true); return; }
   document.getElementById('onlineJoinGoBtn').disabled = true;
   joinGame(code);
 });
 document.getElementById('onlineLeaveBtn').addEventListener('click', () => {
   if (confirm('Leave the online game?')) leaveOnlineGame();
 });
+document.getElementById('onlineReconnectBtn').addEventListener('click', () => {
+  if (!netReconnectCode) return;
+  document.getElementById('onlineReconnectBtn').classList.add('hidden');
+  joinGame(netReconnectCode, true);
+});
+document.getElementById('onlineRematchBtn').addEventListener('click', () => {
+  if (netRematch || netPhase !== 'playing' || !gameOver || onlineRole !== 'host') return;
+  netRematch = true;
+  refreshOnlineRematchBtn();
+  setOnlineStatusBarText('⏳ Rematch offered — waiting for opponent…');
+  netSend({ type: 'rematchOffer' });
+});
 
 // ---------- Undo ----------
+// Local only — snapshots are never sent to an online peer (that is why logHTML can
+// safely be raw markup here: it is our own, and it never crosses the wire).
 function snapshotState() {
   return {
     board: cloneBoard(board),
@@ -2544,7 +3122,8 @@ function resign() {
   if (!confirm(`${loser} resigns — are you sure?`)) return;
 
   applyResignEffects(resigningColor);
-  if (onlineActive) netSend({ type: 'resign', color: resigningColor });
+  // no colour on the wire: the peer resigns itself, and the other side derives who that was
+  if (onlineActive) netSend({ type: 'resign' });
 }
 
 function applyResignEffects(resigningColor) {
